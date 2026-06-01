@@ -5236,6 +5236,40 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     color: "#82758d",
   };
 
+  const premiumFieldGroupStyle = {
+    marginBottom: "14px",
+    textAlign: "left",
+  };
+
+  const premiumLabelStyle = {
+    display: "block",
+    marginBottom: "6px",
+    color: "#4f4359",
+    fontSize: "13px",
+    fontWeight: "700",
+    letterSpacing: "0.2px",
+  };
+
+  const premiumFormHeaderLineStyle = {
+    width: "42px",
+    height: "4px",
+    margin: "0 auto 20px",
+    borderRadius: "999px",
+    background: "linear-gradient(90deg, #243b55 0%, #6f5878 100%)",
+  };
+
+  const providerFormCardStyle = {
+    ...premiumFormCardStyle,
+    border: "1px solid rgba(36, 59, 85, 0.20)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(244,248,252,0.98) 100%)",
+  };
+
+  const guestFormCardStyle = {
+    ...premiumFormCardStyle,
+    border: "1px solid rgba(111, 88, 120, 0.20)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(251,247,252,0.98) 100%)",
+  };
+
   const providerPrimaryActionStyle = {
     ...providerHomeButtonStyle,
     width: "100%",
@@ -5399,38 +5433,50 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
       )}
 
       {mode === "createProvider" && (
-        <div style={premiumFormCardStyle}>
-          <h2 style={{ marginTop: 0, color: "#243b55" }}>Szolgáltató regisztráció</h2>
-          <p style={premiumHintStyle}>Add meg a szolgáltatói profil alapadatait.</p>
+        <div style={providerFormCardStyle}>
+          <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#243b55" }}>Szolgáltató regisztráció</h2>
+          <div style={premiumFormHeaderLineStyle}></div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="Név, pl. Móni Körmös"
-            value={providerName}
-            onChange={(e) => setProviderName(e.target.value)}
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>Név</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="Móni Körmös"
+              value={providerName}
+              onChange={(e) => setProviderName(e.target.value)}
+            />
+          </div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="Email cím"
-            value={providerEmail}
-            onChange={(e) => setProviderEmail(e.target.value)}
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>Email</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="moni@email.com"
+              value={providerEmail}
+              onChange={(e) => setProviderEmail(e.target.value)}
+            />
+          </div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="4 jegyű saját PIN"
-            value={providerPin}
-            onChange={(e) => setProviderPin(e.target.value)}
-            maxLength="4"
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>PIN</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="4 számjegy"
+              value={providerPin}
+              onChange={(e) => setProviderPin(e.target.value)}
+              maxLength="4"
+            />
+          </div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="Vendégkód, pl. MONI-2026"
-            value={guestCode}
-            onChange={(e) => setGuestCode(e.target.value.toUpperCase())}
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>Vendégkód</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="MONI-2026"
+              value={guestCode}
+              onChange={(e) => setGuestCode(e.target.value.toUpperCase())}
+            />
+          </div>
 
           <button onClick={createProvider} style={providerPrimaryActionStyle}>
             Regisztráció
@@ -5826,38 +5872,50 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
       )}
 
       {mode === "createGuest" && (
-        <div style={premiumFormCardStyle}>
-          <h2 style={{ marginTop: 0, color: "#5b4164" }}>Vendég regisztráció</h2>
-          <p style={premiumHintStyle}>Hozd létre a vendég fiókodat pár adat megadásával.</p>
+        <div style={guestFormCardStyle}>
+          <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#5b4164" }}>Vendég regisztráció</h2>
+          <div style={premiumFormHeaderLineStyle}></div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="Név, pl. Kovács Anna"
-            value={guestName}
-            onChange={(e) => setGuestName(e.target.value)}
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>Név</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="Kovács Anna"
+              value={guestName}
+              onChange={(e) => setGuestName(e.target.value)}
+            />
+          </div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="Email cím"
-            value={guestEmail}
-            onChange={(e) => setGuestEmail(e.target.value)}
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>Email</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="anna@email.com"
+              value={guestEmail}
+              onChange={(e) => setGuestEmail(e.target.value)}
+            />
+          </div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="Telefonszám, pl. +43..."
-            value={guestPhone}
-            onChange={(e) => setGuestPhone(e.target.value)}
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>Telefon</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="+43..."
+              value={guestPhone}
+              onChange={(e) => setGuestPhone(e.target.value)}
+            />
+          </div>
 
-          <input
-            style={premiumInputStyle}
-            placeholder="4 jegyű vendég PIN"
-            value={guestPin}
-            onChange={(e) => setGuestPin(e.target.value)}
-            maxLength="4"
-          />
+          <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>PIN</label>
+            <input
+              style={premiumInputStyle}
+              placeholder="4 számjegy"
+              value={guestPin}
+              onChange={(e) => setGuestPin(e.target.value)}
+              maxLength="4"
+            />
+          </div>
 
           <button onClick={createGuest} style={guestPrimaryActionStyle}>
             Vendég létrehozása
