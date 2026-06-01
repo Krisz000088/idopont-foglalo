@@ -5205,6 +5205,58 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     cursor: "pointer",
   };
 
+
+  const premiumFormCardStyle = {
+    width: "100%",
+    maxWidth: "420px",
+    margin: "22px auto 0",
+    padding: "24px",
+    borderRadius: "22px",
+    border: "1px solid rgba(98, 84, 111, 0.18)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,246,252,0.96) 100%)",
+    boxShadow: "0 18px 45px rgba(36, 59, 85, 0.16)",
+  };
+
+  const premiumInputStyle = {
+    width: "100%",
+    boxSizing: "border-box",
+    padding: "12px 14px",
+    marginBottom: "12px",
+    borderRadius: "14px",
+    border: "1px solid rgba(98, 84, 111, 0.22)",
+    backgroundColor: "rgba(255,255,255,0.95)",
+    color: "#2d2733",
+    fontSize: "15px",
+    outline: "none",
+  };
+
+  const premiumHintStyle = {
+    margin: "-4px 0 14px",
+    fontSize: "12px",
+    color: "#82758d",
+  };
+
+  const providerPrimaryActionStyle = {
+    ...providerHomeButtonStyle,
+    width: "100%",
+    marginTop: "6px",
+  };
+
+  const guestPrimaryActionStyle = {
+    ...guestHomeButtonStyle,
+    width: "100%",
+    marginTop: "6px",
+  };
+
+  const secondaryGhostButtonStyle = {
+    marginTop: "14px",
+    border: "none",
+    background: "transparent",
+    color: "#62546f",
+    fontSize: "13px",
+    cursor: "pointer",
+  };
+
   return (
     <div style={{ maxWidth: "760px", margin: "30px auto", fontFamily: "Arial", padding: "20px" }}>
       <h1>Időpont Foglaló</h1>
@@ -5347,29 +5399,47 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
       )}
 
       {mode === "createProvider" && (
-        <>
-          <h2>Szolgáltató regisztráció</h2>
-
-          <input placeholder="Név, pl. Maris Körmös" value={providerName} onChange={(e) => setProviderName(e.target.value)} />
-          <p>Ez a név fog megjelenni a vendégeknek.</p>
-
-          <input placeholder="Email cím" value={providerEmail} onChange={(e) => setProviderEmail(e.target.value)} />
-          <p>Ezzel az email címmel tudsz belépni és később belépési adatot visszaállítani.</p>
-
-          <input placeholder="4 jegyű saját PIN" value={providerPin} onChange={(e) => setProviderPin(e.target.value)} maxLength="4" />
-          <p><b>Fontos:</b> jegyezd meg vagy írd fel ezt a PIN-t.</p>
+        <div style={premiumFormCardStyle}>
+          <h2 style={{ marginTop: 0, color: "#243b55" }}>Szolgáltató regisztráció</h2>
+          <p style={premiumHintStyle}>Add meg a szolgáltatói profil alapadatait.</p>
 
           <input
-            placeholder="Vendégkód, pl. MARIS-2026"
+            style={premiumInputStyle}
+            placeholder="Név, pl. Móni Körmös"
+            value={providerName}
+            onChange={(e) => setProviderName(e.target.value)}
+          />
+
+          <input
+            style={premiumInputStyle}
+            placeholder="Email cím"
+            value={providerEmail}
+            onChange={(e) => setProviderEmail(e.target.value)}
+          />
+
+          <input
+            style={premiumInputStyle}
+            placeholder="4 jegyű saját PIN"
+            value={providerPin}
+            onChange={(e) => setProviderPin(e.target.value)}
+            maxLength="4"
+          />
+
+          <input
+            style={premiumInputStyle}
+            placeholder="Vendégkód, pl. MONI-2026"
             value={guestCode}
             onChange={(e) => setGuestCode(e.target.value.toUpperCase())}
           />
-          <p>Ezt a kódot adod meg a vendégeidnek. Legalább 6 karakter, lehet betű, szám, kötőjel vagy aláhúzás.</p>
 
-          <button onClick={createProvider}>Regisztráció</button>
-          <br /><br />
-          <button onClick={() => setMode("")}>Vissza</button>
-        </>
+          <button onClick={createProvider} style={providerPrimaryActionStyle}>
+            Regisztráció
+          </button>
+
+          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>
+            Vissza
+          </button>
+        </div>
       )}
 
       {mode === "providerLogin" && (
@@ -5756,26 +5826,47 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
       )}
 
       {mode === "createGuest" && (
-        <>
-          <h2>Vendég regisztráció</h2>
+        <div style={premiumFormCardStyle}>
+          <h2 style={{ marginTop: 0, color: "#5b4164" }}>Vendég regisztráció</h2>
+          <p style={premiumHintStyle}>Hozd létre a vendég fiókodat pár adat megadásával.</p>
 
-          <input placeholder="Vendég neve" value={guestName} onChange={(e) => setGuestName(e.target.value)} />
-          <br /><br />
+          <input
+            style={premiumInputStyle}
+            placeholder="Név, pl. Kovács Anna"
+            value={guestName}
+            onChange={(e) => setGuestName(e.target.value)}
+          />
 
-          <input placeholder="Email cím" value={guestEmail} onChange={(e) => setGuestEmail(e.target.value)} />
-          <p>Erre az email címre lehet majd elküldeni az elfelejtett belépési adatokat.</p>
+          <input
+            style={premiumInputStyle}
+            placeholder="Email cím"
+            value={guestEmail}
+            onChange={(e) => setGuestEmail(e.target.value)}
+          />
 
-          <input placeholder="Telefonszám, pl. +43..." value={guestPhone} onChange={(e) => setGuestPhone(e.target.value)} />
-          <br /><br />
+          <input
+            style={premiumInputStyle}
+            placeholder="Telefonszám, pl. +43..."
+            value={guestPhone}
+            onChange={(e) => setGuestPhone(e.target.value)}
+          />
 
-          <input placeholder="4 jegyű vendég PIN" value={guestPin} onChange={(e) => setGuestPin(e.target.value)} maxLength="4" />
-          <p><b>Fontos:</b> a belépéshez az email címed és a PIN-ed kell.</p>
+          <input
+            style={premiumInputStyle}
+            placeholder="4 jegyű vendég PIN"
+            value={guestPin}
+            onChange={(e) => setGuestPin(e.target.value)}
+            maxLength="4"
+          />
 
-          <button onClick={createGuest}>Vendég létrehozása</button>
+          <button onClick={createGuest} style={guestPrimaryActionStyle}>
+            Vendég létrehozása
+          </button>
 
-          <br /><br />
-          <button onClick={() => setMode("")}>Vissza</button>
-        </>
+          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>
+            Vissza
+          </button>
+        </div>
       )}
 
       {mode === "guestLogin" && (
