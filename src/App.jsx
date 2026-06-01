@@ -77,6 +77,7 @@ function App() {
   const [guestNewPin, setGuestNewPin] = useState("");
   const [guestNewPinAgain, setGuestNewPinAgain] = useState("");
   const [providerOverviewPanel, setProviderOverviewPanel] = useState("");
+  const [showDeveloperTools, setShowDeveloperTools] = useState(false);
 
   useEffect(() => localStorage.setItem("providers", JSON.stringify(providers)), [providers]);
   useEffect(() => localStorage.setItem("guests", JSON.stringify(guests)), [guests]);
@@ -5135,16 +5136,53 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
           <br /><br />
 
           <button onClick={() => setMode("forgotGuest")}>Elfelejtett vendég belépés</button>
-          <br /><br />
 
-          <button onClick={generateBigStressTestData}>Nagy stresszteszt generálása</button>
-          {renderTestAccessData()}
-          <br /><br />
+          <div
+            style={{
+              position: "fixed",
+              left: "10px",
+              bottom: "10px",
+              zIndex: 9999,
+              textAlign: "left",
+            }}
+          >
+            <button
+              onClick={() => setShowDeveloperTools(!showDeveloperTools)}
+              style={{
+                fontSize: "11px",
+                padding: "4px 8px",
+                opacity: 0.55,
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              Fejlesztői gomb
+            </button>
 
-          <button onClick={clearAllData}>Helyi tesztadatok teljes törlése</button>
-          <br /><br />
+            {showDeveloperTools && (
+              <div
+                style={{
+                  marginTop: "8px",
+                  padding: "10px",
+                  border: "1px solid #bbb",
+                  borderRadius: "8px",
+                  backgroundColor: "white",
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
+                  width: "240px",
+                }}
+              >
+                <button onClick={generateBigStressTestData}>Nagy stresszteszt generálása</button>
+                <br /><br />
 
-          <button onClick={clearSupabaseTestData}>Supabase tesztadatok törlése</button>
+                <button onClick={clearAllData}>Helyi tesztadatok teljes törlése</button>
+                <br /><br />
+
+                <button onClick={clearSupabaseTestData}>Supabase tesztadatok törlése</button>
+
+                {renderTestAccessData()}
+              </div>
+            )}
+          </div>
         </>
       )}
 
