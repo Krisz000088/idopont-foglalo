@@ -21,6 +21,7 @@ function App() {
   const [activeProvider, setActiveProvider] = useState(null);
   const [forgotProviderEmail, setForgotProviderEmail] = useState("");
   const [forgotGuestEmail, setForgotGuestEmail] = useState("");
+  const [forgotLoginEmail, setForgotLoginEmail] = useState("");
   const [guestName, setGuestName] = useState("");
   const [guestEmail, setGuestEmail] = useState("");
   const [guestPhone, setGuestPhone] = useState("");
@@ -3449,6 +3450,66 @@ function App() {
   }
 
 
+  async function recoverAnyLogin() {
+    if (!forgotLoginEmail) {
+      alert("Add meg az email címed.");
+      return;
+    }
+
+    const emailValue = forgotLoginEmail.trim();
+    const normalizedEmail = emailValue.toLowerCase();
+
+    const foundProvider = providers.find(
+      (provider) => (provider.email || "").toLowerCase() === normalizedEmail
+    );
+
+    const foundGuest = guests.find(
+      (guest) => (guest.email || "").toLowerCase() === normalizedEmail
+    );
+
+    if (!foundProvider && !foundGuest) {
+      alert("Nem találtam ilyen email címmel regisztrált fiókot.");
+      return;
+    }
+
+    const emailSections = [];
+
+    if (foundProvider) {
+      emailSections.push(
+        "Szolgáltatói belépési adatok:",
+        `Belépési email: ${foundProvider.email}`,
+        `PIN: ${foundProvider.pin}`,
+        `Vendégkód: ${foundProvider.guestCode}`,
+        ""
+      );
+    }
+
+    if (foundGuest) {
+      emailSections.push(
+        "Vendég belépési adatok:",
+        `Név: ${foundGuest.name}`,
+        `Email: ${foundGuest.email}`,
+        `PIN: ${foundGuest.pin}`
+      );
+    }
+
+    const emailResult = await sendLoginRecoveryEmail({
+      to: emailValue,
+      subject: "Időpont Foglaló - elfelejtett jelszó",
+      type: "login_recovery",
+      lines: emailSections,
+    });
+
+    if (emailResult.ok) {
+      alert("Elküldtem a belépési adatokat emailben.");
+      setForgotLoginEmail("");
+      setMode("");
+    } else {
+      alert("Nem sikerült elküldeni az emailt. Ellenőrizd, hogy a Supabase send-email Edge Function be van-e állítva.");
+    }
+  }
+
+
   function getMessagesForProvider(providerId) {
     return messages
       .filter((message) => message.providerId === providerId)
@@ -5112,30 +5173,67 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     ? guestBookings.filter((b) => b.guestId === activeGuest.id && b.cancelledByProvider)
     : [];
 
+  const homeButtonBaseStyle = {
+    width: "250px",
+    padding: "12px 18px",
+    border: "none",
+    borderRadius: "999px",
+    color: "white",
+    fontWeight: "700",
+    letterSpacing: "0.2px",
+    cursor: "pointer",
+    boxShadow: "0 8px 18px rgba(0,0,0,0.16)",
+  };
+
+  const providerHomeButtonStyle = {
+    ...homeButtonBaseStyle,
+    background: "linear-gradient(135deg, #243b55 0%, #141e30 100%)",
+  };
+
+  const guestHomeButtonStyle = {
+    ...homeButtonBaseStyle,
+    background: "linear-gradient(135deg, #7f5a83 0%, #0d324d 100%)",
+  };
+
+  const forgotPasswordLinkStyle = {
+    marginTop: "26px",
+    border: "none",
+    background: "transparent",
+    color: "#62546f",
+    fontSize: "13px",
+    textDecoration: "underline",
+    cursor: "pointer",
+  };
+
   return (
     <div style={{ maxWidth: "760px", margin: "30px auto", fontFamily: "Arial", padding: "20px" }}>
       <h1>Időpont Foglaló</h1>
 
       {!mode && (
         <>
-          <h2>Mit szeretnél?</h2>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", marginTop: "18px" }}>
+            <button onClick={() => setMode("createProvider")} style={providerHomeButtonStyle}>
+              Szolgáltató regisztráció
+            </button>
 
-          <button onClick={() => setMode("createProvider")}>Szolgáltató regisztráció</button>
-          <br /><br />
+            <button onClick={() => setMode("providerLogin")} style={providerHomeButtonStyle}>
+              Szolgáltató belépés
+            </button>
 
-          <button onClick={() => setMode("providerLogin")}>Szolgáltató belépés</button>
-          <br /><br />
+            <div style={{ height: "8px" }} />
 
-          <button onClick={() => setMode("forgotProvider")}>Elfelejtett szolgáltatói belépés</button>
-          <br /><br />
+            <button onClick={() => setMode("createGuest")} style={guestHomeButtonStyle}>
+              Vendég regisztráció
+            </button>
 
-          <button onClick={() => setMode("createGuest")}>Vendég regisztráció</button>
-          <br /><br />
+            <button onClick={() => setMode("guestLogin")} style={guestHomeButtonStyle}>
+              Vendég belépés
+            </button>
 
-          <button onClick={() => setMode("guestLogin")}>Vendég belépés</button>
-          <br /><br />
-
-          <button onClick={() => setMode("forgotGuest")}>Elfelejtett vendég belépés</button>
+            <button onClick={() => setMode("forgotLogin")} style={forgotPasswordLinkStyle}>
+              Elfelejtett jelszó
+            </button>
+          </div>
 
           <div
             style={{
@@ -5183,6 +5281,27 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               </div>
             )}
           </div>
+        </>
+      )}
+
+
+      {mode === "forgotLogin" && (
+        <>
+          <h2>Elfelejtett jelszó</h2>
+          <p>Add meg a regisztrált email címed. Ha van hozzá szolgáltatói vagy vendég fiók, a rendszer emailben küldi a belépési adatokat.</p>
+
+          <input
+            placeholder="Email cím"
+            value={forgotLoginEmail}
+            onChange={(e) => setForgotLoginEmail(e.target.value)}
+            style={{ width: "280px", padding: "8px" }}
+          />
+
+          <br /><br />
+          <button onClick={recoverAnyLogin}>Belépési adatok küldése emailben</button>
+
+          <br /><br />
+          <button onClick={() => setMode("")}>Vissza</button>
         </>
       )}
 
