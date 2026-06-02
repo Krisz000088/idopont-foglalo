@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
 
 const days = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
@@ -79,6 +79,13 @@ function App() {
   const [guestNewPinAgain, setGuestNewPinAgain] = useState("");
   const [providerOverviewPanel, setProviderOverviewPanel] = useState("");
   const [showDeveloperTools, setShowDeveloperTools] = useState(false);
+  const [showProviderSettings, setShowProviderSettings] = useState(false);
+  const [showGuestSettings, setShowGuestSettings] = useState(false);
+  const [providerEmailNotifications, setProviderEmailNotifications] = useState(true);
+  const [guestEmailNotifications, setGuestEmailNotifications] = useState(true);
+  const [developerMessageText, setDeveloperMessageText] = useState("");
+  const [showDeveloperContact, setShowDeveloperContact] = useState(false);
+  const lastHistoryKeyRef = useRef("");
 
   useEffect(() => localStorage.setItem("providers", JSON.stringify(providers)), [providers]);
   useEffect(() => localStorage.setItem("guests", JSON.stringify(guests)), [guests]);
@@ -89,6 +96,38 @@ function App() {
   useEffect(() => {
     loadSupabaseData();
   }, []);
+
+  useEffect(() => {
+    const key = `${mode || "home"}-${activeProvider ? "provider" : ""}-${activeGuest ? "guest" : ""}`;
+
+    if (key !== "home--" && lastHistoryKeyRef.current !== key) {
+      window.history.pushState({ appView: key }, "");
+      lastHistoryKeyRef.current = key;
+    }
+  }, [mode, activeProvider, activeGuest]);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      if (activeProvider) {
+        setActiveProvider(null);
+        setShowProviderSettings(false);
+        return;
+      }
+
+      if (activeGuest) {
+        setActiveGuest(null);
+        setShowGuestSettings(false);
+        return;
+      }
+
+      if (mode) {
+        setMode("");
+      }
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [mode, activeProvider, activeGuest]);
 
   function formatTimeFromSupabase(timeValue) {
     if (!timeValue) return "";
@@ -331,6 +370,28 @@ function App() {
       text: buildPlainTextEmail(lines),
       html: buildHtmlEmail(subject, lines),
     });
+  }
+
+  function sendDeveloperMessage(senderType, senderName, senderEmail) {
+    const text = developerMessageText.trim();
+
+    if (!text) {
+      alert("Írj be egy üzenetet.");
+      return;
+    }
+
+    console.log("Üzenet a fejlesztőnek:", { senderType, senderName, senderEmail, text });
+    alert("Az üzenet előkészítve. Az éles email küldést később kötjük be, addig a böngésző Console-ban látható.");
+    setDeveloperMessageText("");
+    setShowDeveloperContact(false);
+  }
+
+  function getBookingsForProviderDate(provider, date) {
+    if (!provider || !date) return [];
+
+    return guestBookings.filter(
+      (booking) => booking.active && booking.providerId === provider.id && booking.date === date
+    );
   }
 
   function renderCopyField(label, value) {
@@ -2100,25 +2161,95 @@ function App() {
       return;
     }
 
+    const bookingsOnDate = getBookingsForProviderDate(activeProvider, exceptionDate);
+
+    if (bookingsOnDate.length > 0) {
+      const confirmed = confirm(
+        `Vigyázz, erre a napra már ${bookingsOnDate.length} aktív foglalás van. Biztosan nem dolgozik napnak jelölöd?
+
+Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést kapnak.`
+      );
+
+      if (!confirmed) return;
+    }
+
+    const cancelMessage = "A szolgáltató ezt a napot nem dolgozik napnak jelölte, ezért az időpontod törölve lett.";
+    const affectedSlotIds = bookingsOnDate.map((booking) => booking.slotId);
+    const affectedGuestIds = bookingsOnDate.map((booking) => booking.guestId);
+
     const updatedProviders = providers.map((provider) =>
       provider.id === activeProvider.id
-        ? { ...provider, exceptionDates: [...currentExceptions, exceptionDate] }
+        ? {
+            ...provider,
+            exceptionDates: [...currentExceptions, exceptionDate],
+            slots: (provider.slots || []).map((slot) =>
+              affectedSlotIds.includes(slot.id)
+                ? { ...slot, booked: false, bookedBy: "", guestId: null, guestEmail: "", guestPhone: "", service: "", note: "" }
+                : slot
+            ),
+            notifications: bookingsOnDate.length > 0
+              ? [
+                  {
+                    id: Date.now(),
+                    text: `${bookingsOnDate.length} foglalás törölve, mert ${formatDateHu(exceptionDate)} nem dolgozik nap lett.`,
+                    note: cancelMessage,
+                  },
+                  ...(provider.notifications || []),
+                ]
+              : provider.notifications || [],
+          }
         : provider
     );
 
+    const updatedBookings = guestBookings.map((booking) =>
+      affectedSlotIds.includes(booking.slotId) && booking.active
+        ? { ...booking, active: false, cancelledByProvider: true, providerCancelMessage: cancelMessage }
+        : booking
+    );
+
+    const updatedGuests = guests.map((guest) =>
+      affectedGuestIds.includes(guest.id)
+        ? {
+            ...guest,
+            notifications: [
+              {
+                id: Date.now() + Math.random(),
+                text: `${activeProvider.name} törölte az időpontodat, mert ${formatDateHu(exceptionDate)} nem dolgozik nap lett.`,
+                message: cancelMessage,
+              },
+              ...(guest.notifications || []),
+            ],
+          }
+        : guest
+    );
+
+    const cancelMessages = bookingsOnDate.map((booking, index) => ({
+      id: Date.now() + index,
+      providerId: activeProvider.id,
+      providerName: activeProvider.name,
+      guestId: booking.guestId,
+      guestName: booking.guestName,
+      slotId: booking.slotId,
+      date: booking.date,
+      time: booking.time,
+      from: "provider",
+      fromName: activeProvider.name,
+      toName: booking.guestName,
+      text: cancelMessage,
+      type: "cancel",
+    }));
+
     setProviders(updatedProviders);
+    setGuestBookings(updatedBookings);
+    setGuests(updatedGuests);
+    setMessages([...cancelMessages, ...messages]);
     setActiveProvider(updatedProviders.find((p) => p.id === activeProvider.id));
     setExceptionDate("");
 
     const providerDbId = await getSupabaseProviderId(activeProvider);
 
     if (providerDbId) {
-      const { error } = await supabase.from("kivetel_napok").insert([
-        {
-          szolgaltato_id: providerDbId,
-          datum: exceptionDate,
-        },
-      ]);
+      const { error } = await supabase.from("kivetel_napok").insert([{ szolgaltato_id: providerDbId, datum: exceptionDate }]);
 
       if (error) {
         console.error(error);
@@ -2126,7 +2257,28 @@ function App() {
         return;
       }
 
-      alert("Kivétel nap hozzáadva és Supabase-be is elmentve.");
+      for (const booking of bookingsOnDate) {
+        const slot = (activeProvider.slots || []).find((slotItem) => slotItem.id === booking.slotId) || {
+          id: booking.slotId,
+          date: booking.date,
+          time: booking.time,
+        };
+        const cancelMessageRow = cancelMessages.find((message) => message.slotId === booking.slotId);
+
+        await saveMessageToSupabase(cancelMessageRow, {
+          provider: activeProvider,
+          guest: guests.find((guest) => guest.id === booking.guestId),
+          slot,
+        });
+
+        await syncBookingCancellationToSupabase(booking, activeProvider, slot);
+      }
+
+      alert(
+        bookingsOnDate.length > 0
+          ? `Kivétel nap hozzáadva. ${bookingsOnDate.length} foglalás törölve és az időpontok Supabase-ben is felszabadítva.`
+          : "Kivétel nap hozzáadva és Supabase-be is elmentve."
+      );
       return;
     }
 
@@ -5211,6 +5363,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     maxWidth: "420px",
     margin: "22px auto 0",
     padding: "24px",
+    boxSizing: "border-box",
     borderRadius: "22px",
     border: "1px solid rgba(98, 84, 111, 0.18)",
     background: "linear-gradient(180deg, rgba(255,255,255,0.96) 0%, rgba(248,246,252,0.96) 100%)",
@@ -5291,9 +5444,81 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     cursor: "pointer",
   };
 
+  const appShellStyle = {
+    maxWidth: "760px",
+    width: "100%",
+    margin: "30px auto",
+    fontFamily: "Arial",
+    padding: "20px",
+    boxSizing: "border-box",
+    textAlign: "center",
+  };
+
+  const premiumPageStyle = {
+    width: "100%",
+    boxSizing: "border-box",
+    margin: "18px auto 0",
+    padding: "18px",
+    borderRadius: "24px",
+    border: "1px solid rgba(98, 84, 111, 0.16)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,246,252,0.98) 100%)",
+    boxShadow: "0 18px 45px rgba(36, 59, 85, 0.13)",
+  };
+
+  const premiumPanelStyle = {
+    border: "1px solid rgba(98, 84, 111, 0.14)",
+    padding: "14px",
+    margin: "14px 0",
+    borderRadius: "18px",
+    background: "rgba(255,255,255,0.82)",
+    boxShadow: "0 8px 22px rgba(36, 59, 85, 0.08)",
+  };
+
+  const providerSmallButtonStyle = {
+    padding: "9px 14px",
+    border: "none",
+    borderRadius: "999px",
+    background: "linear-gradient(135deg, #243b55 0%, #141e30 100%)",
+    color: "white",
+    fontWeight: "700",
+    cursor: "pointer",
+    boxShadow: "0 6px 14px rgba(20,30,48,0.16)",
+  };
+
+  const guestSmallButtonStyle = {
+    padding: "9px 14px",
+    border: "none",
+    borderRadius: "999px",
+    background: "linear-gradient(135deg, #7f5a83 0%, #0d324d 100%)",
+    color: "white",
+    fontWeight: "700",
+    cursor: "pointer",
+    boxShadow: "0 6px 14px rgba(13,50,77,0.16)",
+  };
+
+  const dangerButtonStyle = {
+    padding: "10px 14px",
+    border: "none",
+    borderRadius: "999px",
+    background: "linear-gradient(135deg, #9b1c31 0%, #5c0f1d 100%)",
+    color: "white",
+    fontWeight: "700",
+    cursor: "pointer",
+  };
+
+  const premiumToggleRowStyle = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    padding: "10px 0",
+    borderBottom: "1px solid rgba(98, 84, 111, 0.12)",
+    textAlign: "left",
+  };
+
   return (
-    <div style={{ maxWidth: "760px", margin: "30px auto", fontFamily: "Arial", padding: "20px" }}>
-      <h1>Időpont Foglaló</h1>
+    <div style={appShellStyle}>
+      <h1 style={{ color: "#243b55", letterSpacing: "0.2px" }}>Időpont Foglaló</h1>
 
       {!mode && (
         <>
@@ -5490,25 +5715,59 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
       {mode === "providerLogin" && (
         <>
-          <h2>Szolgáltató belépés</h2>
-
           {!activeProvider && (
-            <>
-              <input placeholder="Email cím" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} />
-              <br /><br />
-              <input placeholder="4 jegyű PIN" value={loginPin} onChange={(e) => setLoginPin(e.target.value)} maxLength="4" />
-              <br /><br />
-              <button onClick={providerLogin}>Belépés</button>
-            </>
+            <div style={providerFormCardStyle}>
+              <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#243b55" }}>Szolgáltató belépés</h2>
+              <div style={premiumFormHeaderLineStyle}></div>
+
+              <div style={premiumFieldGroupStyle}>
+                <label style={premiumLabelStyle}>Email</label>
+                <input style={premiumInputStyle} placeholder="Email cím" value={loginUsername} onChange={(e) => setLoginUsername(e.target.value)} />
+              </div>
+
+              <div style={premiumFieldGroupStyle}>
+                <label style={premiumLabelStyle}>PIN</label>
+                <input style={premiumInputStyle} placeholder="4 jegyű PIN" value={loginPin} onChange={(e) => setLoginPin(e.target.value)} maxLength="4" />
+              </div>
+
+              <button onClick={providerLogin} style={providerPrimaryActionStyle}>Belépés</button>
+              <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+            </div>
           )}
 
           {activeProvider && (
-            <>
-              <h2>{activeProvider.name}</h2>
+            <div style={premiumPageStyle}>
+              <h2 style={{ marginTop: 0, color: "#243b55" }}>{activeProvider.name}</h2>
               <p>Email: <b>{activeProvider.email || "nincs megadva"}</b></p>
               <p>Vendégkód: <b>{activeProvider.guestCode}</b></p>
 
               {renderProviderStats(activeProvider)}
+
+              <button onClick={() => setShowProviderSettings(!showProviderSettings)} style={{ ...providerSmallButtonStyle, margin: "12px 0" }}>
+                {showProviderSettings ? "Beállítások bezárása" : "Beállítások"}
+              </button>
+
+              {showProviderSettings && (
+                <div style={premiumPanelStyle}>
+                  <h3 style={{ marginTop: 0 }}>Szolgáltatói beállítások</h3>
+                  <div style={premiumToggleRowStyle}>
+                    <span>Email értesítés foglalásokról</span>
+                    <label>
+                      <input type="checkbox" checked={providerEmailNotifications} onChange={(e) => setProviderEmailNotifications(e.target.checked)} />
+                      {" "}{providerEmailNotifications ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+                  <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
+                    Üzenet a fejlesztőnek
+                  </button>
+                  {showDeveloperContact && (
+                    <div style={{ marginTop: "12px" }}>
+                      <textarea placeholder="Írd le, mit szeretnél jelezni..." value={developerMessageText} onChange={(e) => setDeveloperMessageText(e.target.value)} style={{ ...premiumInputStyle, minHeight: "90px" }} />
+                      <button onClick={() => sendDeveloperMessage("provider", activeProvider.name, activeProvider.email)} style={providerSmallButtonStyle}>Üzenet elküldése</button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               <h3>Időpontok és foglalások</h3>
 
@@ -5602,7 +5861,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 </>
               )}
 
-              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" }}>
+              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" , display: showProviderSettings ? "block" : "none" }}>
                 <button
                   onClick={() => setShowProviderGuestCodeEdit(!showProviderGuestCodeEdit)}
                   style={{ padding: "8px 12px", cursor: "pointer" }}
@@ -5625,7 +5884,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <div style={{ margin: "14px 0" }}>
+              <div style={{ margin: "14px 0" , display: showProviderSettings ? "block" : "none" }}>
                 <button
                   onClick={() => setShowProviderPinEdit(!showProviderPinEdit)}
                   style={{ padding: "8px 12px", cursor: "pointer" }}
@@ -5731,7 +5990,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" }}>
+              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" , display: showProviderSettings ? "block" : "none" }}>
                 <button
                   onClick={() => setShowProviderServices(!showProviderServices)}
                   style={{ padding: "8px 12px", cursor: "pointer" }}
@@ -5762,7 +6021,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" }}>
+              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" , display: showProviderSettings ? "block" : "none" }}>
                 <button
                   onClick={() => setShowProviderBlockedGuests(!showProviderBlockedGuests)}
                   style={{ padding: "8px 12px", cursor: "pointer" }}
@@ -5790,7 +6049,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" }}>
+              <div style={{ border: "1px solid #ddd", padding: "10px", margin: "16px 0", borderRadius: "8px" , display: showProviderSettings ? "block" : "none" }}>
                 <button
                   onClick={() => setShowProviderScheduleSettings(!showProviderScheduleSettings)}
                   style={{ padding: "8px 12px", cursor: "pointer" }}
@@ -5860,10 +6119,10 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
               <br /><br />
 
-              <button onClick={deleteProviderAccount} style={{ backgroundColor: "red", color: "white", padding: "10px" }}>
+              <button onClick={deleteProviderAccount} style={{ ...dangerButtonStyle, display: showProviderSettings ? "inline-block" : "none" }}>
                 Szolgáltatói fiók törlése
               </button>
-            </>
+            </div>
           )}
 
           <br /><br />
@@ -5929,38 +6188,70 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
       {mode === "guestLogin" && (
         <>
-          <h2>Vendég belépés</h2>
-
           {!activeGuest && (
-            <>
-              <input
-                placeholder="Email cím"
-                value={guestLoginEmail}
-                onChange={(e) => setGuestLoginEmail(e.target.value)}
-              />
+            <div style={guestFormCardStyle}>
+              <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#5b4164" }}>Vendég belépés</h2>
+              <div style={premiumFormHeaderLineStyle}></div>
 
-              <br /><br />
+              <div style={premiumFieldGroupStyle}>
+                <label style={premiumLabelStyle}>Email</label>
+                <input
+                  style={premiumInputStyle}
+                  placeholder="Email cím"
+                  value={guestLoginEmail}
+                  onChange={(e) => setGuestLoginEmail(e.target.value)}
+                />
+              </div>
 
-              <input
-                placeholder="4 jegyű vendég PIN"
-                value={guestLoginPin}
-                onChange={(e) => setGuestLoginPin(e.target.value)}
-                maxLength="4"
-              />
+              <div style={premiumFieldGroupStyle}>
+                <label style={premiumLabelStyle}>PIN</label>
+                <input
+                  style={premiumInputStyle}
+                  placeholder="4 jegyű vendég PIN"
+                  value={guestLoginPin}
+                  onChange={(e) => setGuestLoginPin(e.target.value)}
+                  maxLength="4"
+                />
+              </div>
 
-              <br /><br />
-
-              <button onClick={guestLogin}>Belépés</button>
-            </>
+              <button onClick={guestLogin} style={guestPrimaryActionStyle}>Belépés</button>
+              <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+            </div>
           )}
 
           {activeGuest && (
-            <>
-              <h2>Belépve: {activeGuest.name}</h2>
+            <div style={premiumPageStyle}>
+              <h2 style={{ marginTop: 0, color: "#5b4164" }}>Belépve: {activeGuest.name}</h2>
               {activeGuest.email && <p>Email: {activeGuest.email}</p>}
               {activeGuest.phone && <p>Telefonszám: {activeGuest.phone}</p>}
 
-              <div style={{ margin: "12px 0" }}>
+              <button onClick={() => setShowGuestSettings(!showGuestSettings)} style={{ ...guestSmallButtonStyle, margin: "12px 0" }}>
+                {showGuestSettings ? "Beállítások bezárása" : "Beállítások"}
+              </button>
+
+              {showGuestSettings && (
+                <div style={premiumPanelStyle}>
+                  <h3 style={{ marginTop: 0 }}>Vendég beállítások</h3>
+                  <div style={premiumToggleRowStyle}>
+                    <span>Email értesítés foglalásokról</span>
+                    <label>
+                      <input type="checkbox" checked={guestEmailNotifications} onChange={(e) => setGuestEmailNotifications(e.target.checked)} />
+                      {" "}{guestEmailNotifications ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+                  <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...guestSmallButtonStyle, marginTop: "12px" }}>
+                    Üzenet a fejlesztőnek
+                  </button>
+                  {showDeveloperContact && (
+                    <div style={{ marginTop: "12px" }}>
+                      <textarea placeholder="Írd le, mit szeretnél jelezni..." value={developerMessageText} onChange={(e) => setDeveloperMessageText(e.target.value)} style={{ ...premiumInputStyle, minHeight: "90px" }} />
+                      <button onClick={() => sendDeveloperMessage("guest", activeGuest.name, activeGuest.email)} style={guestSmallButtonStyle}>Üzenet elküldése</button>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div style={{ margin: "12px 0", display: showGuestSettings ? "block" : "none" }}>
                 <button
                   onClick={() => setShowGuestPhoneEdit(!showGuestPhoneEdit)}
                   style={{ padding: "8px 12px", marginRight: "8px", cursor: "pointer" }}
@@ -6344,10 +6635,10 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
               <br /><br />
 
-              <button onClick={deleteGuestAccount} style={{ backgroundColor: "red", color: "white", padding: "10px" }}>
+              <button onClick={deleteGuestAccount} style={{ ...dangerButtonStyle, display: showGuestSettings ? "inline-block" : "none" }}>
                 Vendég fiók törlése
               </button>
-            </>
+            </div>
           )}
 
           <br /><br />
