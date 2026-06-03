@@ -59,6 +59,7 @@ function App() {
   const [editableGuestPhone, setEditableGuestPhone] = useState("");
   const [showProviderNotifications, setShowProviderNotifications] = useState(false);
   const [hiddenProviderNotificationKeys, setHiddenProviderNotificationKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenProviderNotificationKeys")) || []);
+  const [hiddenProviderMessageKeys, setHiddenProviderMessageKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenProviderMessageKeys")) || []);
   const [showProviderGuestCodeEdit, setShowProviderGuestCodeEdit] = useState(false);
   const [showProviderMessages, setShowProviderMessages] = useState(false);
   const [showProviderServices, setShowProviderServices] = useState(false);
@@ -98,6 +99,7 @@ function App() {
   useEffect(() => localStorage.setItem("guestBookings", JSON.stringify(guestBookings)), [guestBookings]);
   useEffect(() => localStorage.setItem("messages", JSON.stringify(messages)), [messages]);
   useEffect(() => localStorage.setItem("hiddenProviderNotificationKeys", JSON.stringify(hiddenProviderNotificationKeys)), [hiddenProviderNotificationKeys]);
+  useEffect(() => localStorage.setItem("hiddenProviderMessageKeys", JSON.stringify(hiddenProviderMessageKeys)), [hiddenProviderMessageKeys]);
 
 
   useEffect(() => {
@@ -175,6 +177,22 @@ function App() {
 
     return (provider.notifications || []).filter(
       (notification) => !hiddenProviderNotificationKeys.includes(getProviderNotificationKey(provider.id, notification))
+    );
+  }
+
+  function getProviderMessageKey(providerId, message) {
+    return `${normalizeId(providerId)}|${normalizeId(message?.id)}|${String(message?.text || "").trim()}`;
+  }
+
+  function isRealGuestMessage(message) {
+    return message?.from === "guest" && (message?.type || "message") === "message";
+  }
+
+  function getVisibleProviderGuestMessages(providerId) {
+    if (!providerId) return [];
+
+    return getMessagesForProvider(providerId).filter(
+      (message) => isRealGuestMessage(message) && !hiddenProviderMessageKeys.includes(getProviderMessageKey(providerId, message))
     );
   }
 
@@ -1713,34 +1731,40 @@ function App() {
 
     const freshData = await loadSupabaseData();
     const providerSource = freshData?.providers || providers;
-    const bookingSource = freshData?.guestBookings || guestBookings;
 
-    let found = providerSource.find((p) => (p.email || "").toLowerCase() === loginEmailLower);
+    let found = null;
 
-    if (!found) {
-      const { data, error } = await supabase
-        .from("szolgaltatok")
-        .select("*")
-        .ilike("email", loginEmail)
-        .maybeSingle();
+    const { data: directProviderRow, error: directProviderError } = await supabase
+      .from("szolgaltatok")
+      .select("*")
+      .ilike("email", loginEmail)
+      .maybeSingle();
 
-      if (error) {
-        console.error(error);
-        alert("Supabase bejelentkezési hiba. Nézd meg a Console hibát.");
-        return;
-      }
+    if (directProviderError) {
+      console.error(directProviderError);
+      alert("Supabase bejelentkezési hiba. Nézd meg a Console hibát.");
+      return;
+    }
 
-      if (data) {
-        found = mapSupabaseProvider(data);
+    if (directProviderRow) {
+      const mappedProvider = mapSupabaseProvider(directProviderRow);
+      found =
+        providerSource.find((provider) => idsEqual(provider.id, mappedProvider.id)) ||
+        providerSource.find((provider) => normalizeEmail(provider.email) === normalizeEmail(mappedProvider.email)) ||
+        mappedProvider;
 
-        setProviders((currentProviders) => {
-          const alreadyExists = currentProviders.some(
-            (provider) => (provider.email || "").toLowerCase() === (found.email || "").toLowerCase()
-          );
-
-          return alreadyExists ? currentProviders : [...currentProviders, found];
-        });
-      }
+      found = {
+        ...found,
+        ...mappedProvider,
+        slots: Array.isArray(found.slots) ? found.slots : [],
+        notifications: Array.isArray(found.notifications) ? found.notifications : [],
+        services: Array.isArray(found.services) ? found.services : [],
+        exceptionDates: Array.isArray(found.exceptionDates) ? found.exceptionDates : [],
+        breaks: Array.isArray(found.breaks) ? found.breaks : [],
+        blockedEmails: Array.isArray(found.blockedEmails) ? found.blockedEmails : [],
+      };
+    } else {
+      found = providerSource.find((p) => normalizeEmail(p.email) === loginEmailLower);
     }
 
     if (!found) {
@@ -1772,6 +1796,12 @@ function App() {
       pinLoginEnabled: found.pinLoginEnabled !== false,
     };
 
+    setProviders((currentProviders) => {
+      const withoutDuplicate = currentProviders.filter(
+        (provider) => !idsEqual(provider.id, normalizedProvider.id) && normalizeEmail(provider.email) !== normalizeEmail(normalizedProvider.email)
+      );
+      return [...withoutDuplicate, normalizedProvider];
+    });
     setActiveProvider(normalizedProvider);
     setProviderEmailNotifications(normalizedProvider.emailNotifications !== false);
     setProviderOverviewPanel("todayBookings");
@@ -2364,32 +2394,38 @@ function App() {
       return;
     }
 
-    let found = guests.find((g) => (g.email || "").toLowerCase() === loginEmailLower);
+    const freshData = await loadSupabaseData();
+    const guestSource = freshData?.guests || guests;
 
-    if (!found) {
-      const { data, error } = await supabase
-        .from("vendegek")
-        .select("*")
-        .ilike("email", loginEmail)
-        .maybeSingle();
+    let found = null;
 
-      if (error) {
-        console.error(error);
-        alert("Supabase vendég bejelentkezési hiba. Nézd meg a Console hibát.");
-        return;
-      }
+    const { data: directGuestRow, error: directGuestError } = await supabase
+      .from("vendegek")
+      .select("*")
+      .ilike("email", loginEmail)
+      .maybeSingle();
 
-      if (data) {
-        found = mapSupabaseGuest(data);
+    if (directGuestError) {
+      console.error(directGuestError);
+      alert("Supabase vendég bejelentkezési hiba. Nézd meg a Console hibát.");
+      return;
+    }
 
-        setGuests((currentGuests) => {
-          const alreadyExists = currentGuests.some(
-            (guest) => (guest.email || "").toLowerCase() === (found.email || "").toLowerCase()
-          );
+    if (directGuestRow) {
+      const mappedGuest = mapSupabaseGuest(directGuestRow);
+      found =
+        guestSource.find((guest) => idsEqual(guest.id, mappedGuest.id)) ||
+        guestSource.find((guest) => normalizeEmail(guest.email) === normalizeEmail(mappedGuest.email)) ||
+        mappedGuest;
 
-          return alreadyExists ? currentGuests : [...currentGuests, found];
-        });
-      }
+      found = {
+        ...found,
+        ...mappedGuest,
+        providerIds: Array.isArray(found.providerIds) ? found.providerIds : [],
+        notifications: Array.isArray(found.notifications) ? found.notifications : [],
+      };
+    } else {
+      found = guestSource.find((g) => normalizeEmail(g.email) === loginEmailLower);
     }
 
     if (!found) {
@@ -2417,6 +2453,12 @@ function App() {
       pinLoginEnabled: found.pinLoginEnabled !== false,
     };
 
+    setGuests((currentGuests) => {
+      const withoutDuplicate = currentGuests.filter(
+        (guest) => !idsEqual(guest.id, normalizedGuest.id) && normalizeEmail(guest.email) !== normalizeEmail(normalizedGuest.email)
+      );
+      return [...withoutDuplicate, normalizedGuest];
+    });
     setActiveGuest(normalizedGuest);
     setGuestEmailNotifications(normalizedGuest.emailNotifications !== false);
     setEditableGuestPhone(normalizedGuest.phone || "");
@@ -2892,7 +2934,8 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       freeSlots: providerSlots.filter((slot) => slot && !slot.booked).length,
       bookedSlots: providerBookings.length,
       blockedGuests: Array.isArray(provider.blockedEmails) ? provider.blockedEmails.length : 0,
-      unreadLikeMessages: providerMessages.filter((message) => message.from === "guest").length,
+      unreadLikeMessages: getVisibleProviderGuestMessages(provider.id).length,
+      providerNotifications: getVisibleProviderNotifications(provider).length,
       nextBooking: sortedUpcomingBookings[0] || null,
     };
   }
@@ -2903,7 +2946,8 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       { key: "todayBookings", label: "Mai foglalások", value: stats.todayBookings },
       { key: "bookedSlots", label: "Foglalt időpontok", value: stats.bookedSlots },
       { key: "freeSlots", label: "Szabad időpontok", value: stats.freeSlots },
-      { key: "guestMessages", label: "Vendég üzenetek", value: stats.unreadLikeMessages },
+      { key: "guestMessages", label: "Üzenetek", value: stats.unreadLikeMessages },
+      { key: "providerNotifications", label: "Értesítések", value: stats.providerNotifications },
       { key: "registeredGuests", label: "Regisztrált vendégek", value: stats.registeredGuests },
       { key: "blockedGuests", label: "Tiltott vendégek", value: stats.blockedGuests },
     ];
@@ -3009,6 +3053,26 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     alert("Értesítések törölve.");
   }
 
+  function clearProviderGuestMessages() {
+    if (!activeProvider) return;
+
+    const visibleMessages = getVisibleProviderGuestMessages(activeProvider.id);
+
+    if (visibleMessages.length === 0) {
+      alert("Nincs törölhető vendég üzenet.");
+      return;
+    }
+
+    if (!confirm("Biztosan törlöd az összes látható vendég üzenetet ennél a szolgáltatónál?")) return;
+
+    const keysToHide = visibleMessages.map((message) =>
+      getProviderMessageKey(activeProvider.id, message)
+    );
+
+    setHiddenProviderMessageKeys((currentKeys) => [...new Set([...currentKeys, ...keysToHide])]);
+    alert("Vendég üzenetek törölve.");
+  }
+
 function renderProviderOverviewPanel(provider, panel) {
     if (!provider || !panel) return null;
 
@@ -3017,7 +3081,8 @@ function renderProviderOverviewPanel(provider, panel) {
       .filter((booking) => booking.active && idsEqual(booking.providerId, provider.id))
       .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
     const providerSlots = Array.isArray(provider.slots) ? provider.slots : [];
-    const guestMessages = getMessagesForProvider(provider.id).filter((message) => message.from === "guest");
+    const guestMessages = getVisibleProviderGuestMessages(provider.id);
+    const providerNotifications = getVisibleProviderNotifications(provider);
 
     const panelBoxStyle = {
       ...premiumPanelStyle,
@@ -3144,16 +3209,60 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "guestMessages") {
       return (
         <div style={panelBoxStyle}>
-          <h4 style={{ marginTop: 0 }}>Vendég üzenetek</h4>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+            <h4 style={{ margin: 0 }}>Üzenetek</h4>
+            {guestMessages.length > 0 && (
+              <button onClick={clearProviderGuestMessages} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
+                Üzenetek törlése
+              </button>
+            )}
+          </div>
+          <p style={{ marginTop: "8px", color: "#6b5d72", fontSize: "13px" }}>
+            Itt csak a vendégek valódi, kézzel írt üzenetei jelennek meg. Lemondás és módosítás az Értesítések alatt lesz.
+          </p>
           {guestMessages.length === 0 && <p>Nincs vendégtől érkezett üzenet.</p>}
           {guestMessages.map((message) => (
-            <div key={message.id} style={smallCardStyle}>
+            <div key={getProviderMessageKey(provider.id, message)} style={smallCardStyle}>
               <b>{message.fromName || "Vendég"}</b>
               {message.date && message.time && <> — {formatDateHu(message.date)} {message.time}</>}
               <br />
-              {message.type === "cancel" && <b>Lemondási üzenet</b>}
-              {message.type === "cancel" && <br />}
               Üzenet: {message.text}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (panel === "providerNotifications") {
+      return (
+        <div style={panelBoxStyle}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+            <h4 style={{ margin: 0 }}>Értesítések</h4>
+            {providerNotifications.length > 0 && (
+              <button onClick={clearProviderNotifications} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
+                Értesítések törlése
+              </button>
+            )}
+          </div>
+          <p style={{ marginTop: "8px", color: "#6b5d72", fontSize: "13px" }}>
+            Itt látszanak a foglalások, módosítások és lemondások.
+          </p>
+          {providerNotifications.length === 0 && <p>Nincs új értesítés.</p>}
+          {providerNotifications.map((notification) => (
+            <div key={getProviderNotificationKey(provider.id, notification)} style={smallCardStyle}>
+              <b>{notification.text}</b>
+              {notification.service && (
+                <>
+                  <br />
+                  Szolgáltatás: {notification.service}
+                </>
+              )}
+              {notification.note && (
+                <>
+                  <br />
+                  Megjegyzés / üzenet: {notification.note}
+                </>
+              )}
             </div>
           ))}
         </div>
@@ -3683,6 +3792,12 @@ function renderProviderOverviewPanel(provider, panel) {
     const oldText = `${booking.date} ${booking.time}`;
     const newText = `${slotForChange.date} ${slotForChange.time}`;
 
+    const confirmed = confirm(
+      `Biztosan lecseréled a ${formatDateHu(booking.date)} ${booking.time} időpontodat erre: ${formatDateHu(slotForChange.date)} ${slotForChange.time}?`
+    );
+
+    if (!confirmed) return;
+
     const updatedProviders = providers.map((provider) =>
       idsEqual(provider.id, booking.providerId)
         ? {
@@ -4176,8 +4291,8 @@ function renderProviderOverviewPanel(provider, panel) {
 
   function getMessagesForProvider(providerId) {
     return messages
-      .filter((message) => message.providerId === providerId)
-      .sort((a, b) => b.id - a.id);
+      .filter((message) => idsEqual(message.providerId, providerId))
+      .sort((a, b) => String(b.createdAt || b.id || "").localeCompare(String(a.createdAt || a.id || "")));
   }
 
   function getMessagesForGuest(guestId) {
@@ -6546,23 +6661,36 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   style={premiumNeutralButtonStyle}
                 >
                   {showProviderMessages
-                    ? `Üzenetek elrejtése (${getMessagesForProvider(activeProvider.id).length})`
-                    : `Üzenetek megnyitása (${getMessagesForProvider(activeProvider.id).length})`}
+                    ? `Üzenetek elrejtése (${getVisibleProviderGuestMessages(activeProvider.id).length})`
+                    : `Üzenetek megnyitása (${getVisibleProviderGuestMessages(activeProvider.id).length})`}
                 </button>
 
                 {showProviderMessages && (
                   <>
-                    <h3>Üzeneteim</h3>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+                      <h3 style={{ marginBottom: 0 }}>Üzenetek</h3>
+                      {getVisibleProviderGuestMessages(activeProvider.id).length > 0 && (
+                        <button onClick={clearProviderGuestMessages} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
+                          Üzenetek törlése
+                        </button>
+                      )}
+                    </div>
 
-                    {getMessagesForProvider(activeProvider.id).length === 0 && <p>Még nincs üzenet.</p>}
+                    <p style={{ color: "#6b5d72", fontSize: "13px" }}>
+                      Itt csak a vendégek valódi, kézzel írt üzenetei jelennek meg.
+                    </p>
 
-                    {getMessagesForProvider(activeProvider.id).map((message) => (
-                      <div key={message.id} style={premiumListCardStyle}>
-                        <b>{message.from === "guest" ? `Vendégtől: ${message.fromName}` : `Tőled: ${message.toName} részére`}</b>
-                        <br />
-                        Időpont: {message.date} {message.time}
-                        <br />
-                        {message.type === "cancel" && <b>Lemondási üzenet</b>}
+                    {getVisibleProviderGuestMessages(activeProvider.id).length === 0 && <p>Még nincs üzenet.</p>}
+
+                    {getVisibleProviderGuestMessages(activeProvider.id).map((message) => (
+                      <div key={getProviderMessageKey(activeProvider.id, message)} style={premiumListCardStyle}>
+                        <b>Vendégtől: {message.fromName}</b>
+                        {message.date && message.time && (
+                          <>
+                            <br />
+                            Időpont: {message.date} {message.time}
+                          </>
+                        )}
                         <br />
                         Üzenet: {message.text}
                       </div>
