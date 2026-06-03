@@ -200,6 +200,35 @@ function App() {
     return data || [];
   }
 
+  async function cleanupOrphanProviderGuestLinks(linkRows, providerMap, guestMap) {
+    if (!Array.isArray(linkRows) || linkRows.length === 0) return;
+
+    const orphanLinks = linkRows.filter(
+      (row) => !providerMap.has(row.szolgaltato_id) || !guestMap.has(row.vendeg_id)
+    );
+
+    if (orphanLinks.length === 0) return;
+
+    for (const row of orphanLinks) {
+      const { error } = await supabase
+        .from("vendeg_szolgaltatok")
+        .delete()
+        .eq("szolgaltato_id", row.szolgaltato_id)
+        .eq("vendeg_id", row.vendeg_id);
+
+      if (error && !isMissingSupabaseTableError(error)) {
+        console.warn("Régi vendég-szolgáltató kapcsolat törlése nem sikerült:", error);
+      }
+    }
+  }
+
+  function filterExistingProviderIds(providerIds, providerList) {
+    if (!Array.isArray(providerIds)) return [];
+    const existingProviderIds = new Set((providerList || []).map((provider) => normalizeId(provider.id)));
+
+    return [...new Set(providerIds.filter((providerId) => existingProviderIds.has(normalizeId(providerId))))];
+  }
+
   async function copyToClipboard(text) {
     try {
       await navigator.clipboard.writeText(String(text || ""));
@@ -790,6 +819,8 @@ function App() {
       guestMap.set(row.id, guest);
     });
 
+    await cleanupOrphanProviderGuestLinks(providerGuestLinkRows, providerMap, guestMap);
+
     exceptionRows.forEach((row) => {
       const provider = providerMap.get(row.szolgaltato_id);
       if (!provider || !row.datum) return;
@@ -969,7 +1000,7 @@ function App() {
 
     const loadedGuests = Array.from(guestMap.values()).map((guest) => ({
       ...guest,
-      providerIds: [...new Set(guest.providerIds || [])],
+      providerIds: filterExistingProviderIds(guest.providerIds || [], Array.from(providerMap.values())),
       notifications: guest.notifications || [],
     }));
 
@@ -1486,7 +1517,10 @@ function App() {
   }
 
   function isValidGuestCode(code) {
-    return /^[A-Z0-9_-]{6,}$/.test(normalizeGuestCode(code));
+    const normalizedCode = normalizeGuestCode(code);
+    const visibleLength = normalizedCode.replace(/[-_]/g, "").length;
+
+    return normalizedCode.length >= 6 && visibleLength >= 3 && /^[A-Z0-9_-]+$/.test(normalizedCode);
   }
 
   async function createProvider() {
@@ -2150,6 +2184,62 @@ function App() {
       console.warn("A beállítás helyben frissült, de Supabase-ben még hiányozhat az oszlop:", error);
       alert("A beállítás helyben frissült. Ha újratöltés után nem marad meg, futtasd a megadott Supabase SQL-t.");
     }
+  }
+
+  async function saveActiveProviderSettings() {
+    if (!activeProvider) return;
+
+    const providerDbId = await getSupabaseProviderId(activeProvider);
+
+    if (!providerDbId) {
+      alert("Nem találtam a szolgáltatót Supabase-ben, ezért csak helyben maradtak meg a beállítások.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("szolgaltatok")
+      .update({
+        email_ertesites: activeProvider.emailNotifications !== false,
+        pin_belepes: activeProvider.pinLoginEnabled !== false,
+      })
+      .eq("id", providerDbId);
+
+    if (error) {
+      console.error(error);
+      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes és email_ertesites oszlopok léteznek-e Supabase-ben.");
+      return;
+    }
+
+    await loadSupabaseData();
+    alert("Beállítások elmentve.");
+  }
+
+  async function saveActiveGuestSettings() {
+    if (!activeGuest) return;
+
+    const guestDbId = await getSupabaseGuestId(activeGuest);
+
+    if (!guestDbId) {
+      alert("Nem találtam a vendéget Supabase-ben, ezért csak helyben maradtak meg a beállítások.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("vendegek")
+      .update({
+        email_ertesites: activeGuest.emailNotifications !== false,
+        pin_belepes: activeGuest.pinLoginEnabled !== false,
+      })
+      .eq("id", guestDbId);
+
+    if (error) {
+      console.error(error);
+      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes és email_ertesites oszlopok léteznek-e Supabase-ben.");
+      return;
+    }
+
+    await loadSupabaseData();
+    alert("Beállítások elmentve.");
   }
 
   async function updateActiveGuestPhone() {
@@ -3192,14 +3282,14 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       return;
     }
 
-    if (activeGuest.providerIds.includes(foundProvider.id)) {
+    if ((activeGuest.providerIds || []).some((providerId) => idsEqual(providerId, foundProvider.id))) {
       alert("Ez a szolgáltató már hozzá van adva.");
       return;
     }
 
     const updatedGuests = guests.map((g) =>
-      g.id === activeGuest.id
-        ? { ...g, providerIds: [...g.providerIds, foundProvider.id] }
+      idsEqual(g.id, activeGuest.id)
+        ? { ...g, providerIds: [...filterExistingProviderIds(g.providerIds || [], providers), foundProvider.id] }
         : g
     );
 
@@ -5569,7 +5659,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
   }
 
   const activeGuestProviders = activeGuest
-    ? providers.filter((p) => activeGuest.providerIds.includes(p.id))
+    ? providers.filter((provider) => (activeGuest.providerIds || []).some((providerId) => idsEqual(providerId, provider.id)))
     : [];
 
   const activeGuestBookings = activeGuest
@@ -6233,6 +6323,11 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       {" "}{activeProvider.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
                     </label>
                   </div>
+
+                  <button onClick={saveActiveProviderSettings} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
+                    Beállítások mentése
+                  </button>
+
                   <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
                     Üzenet a fejlesztőnek
                   </button>
@@ -6771,6 +6866,11 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       {" "}{activeGuest.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
                     </label>
                   </div>
+
+                  <button onClick={saveActiveGuestSettings} style={{ ...guestSmallButtonStyle, marginTop: "12px" }}>
+                    Beállítások mentése
+                  </button>
+
                   <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...guestSmallButtonStyle, marginTop: "12px" }}>
                     Üzenet a fejlesztőnek
                   </button>
@@ -6930,11 +7030,19 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                             ...guestSmallButtonStyle,
                             display: "block",
                             margin: "8px auto",
-                            opacity: selectedSlot?.id === slot.id ? 1 : 0.82,
-                            transform: selectedSlot?.id === slot.id ? "scale(1.03)" : "none",
+                            opacity: selectedSlot?.id === slot.id ? 1 : 0.86,
+                            transform: selectedSlot?.id === slot.id ? "scale(1.08)" : "none",
+                            background: selectedSlot?.id === slot.id
+                              ? "linear-gradient(135deg, #b8860b 0%, #ffcf5c 45%, #7f5a83 100%)"
+                              : guestSmallButtonStyle.background,
+                            color: selectedSlot?.id === slot.id ? "#ffffff" : guestSmallButtonStyle.color,
+                            border: selectedSlot?.id === slot.id ? "3px solid #ffe29a" : guestSmallButtonStyle.border,
+                            boxShadow: selectedSlot?.id === slot.id
+                              ? "0 10px 24px rgba(184, 134, 11, 0.34)"
+                              : guestSmallButtonStyle.boxShadow,
                           }}
                         >
-                          {slot.time}
+                          {selectedSlot?.id === slot.id ? `✓ ${slot.time}` : slot.time}
                         </button>
                       ))}
                     </>
