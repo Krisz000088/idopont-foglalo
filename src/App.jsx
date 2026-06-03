@@ -1621,6 +1621,7 @@ function App() {
     };
 
     setActiveProvider(normalizedProvider);
+    setProviderOverviewPanel("todayBookings");
     setWorkDays(normalizedProvider.workDays || []);
     setWorkStart(normalizedProvider.workStart || "08:00");
     setWorkEnd(normalizedProvider.workEnd || "16:00");
@@ -2612,7 +2613,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       todayBookings: providerBookings.filter((booking) => booking.date === todayText).length,
       upcomingBookings: upcomingBookings.length,
       freeSlots: providerSlots.filter((slot) => slot && !slot.booked).length,
-      bookedSlots: providerSlots.filter((slot) => slot && slot.booked).length,
+      bookedSlots: providerBookings.length,
       blockedGuests: Array.isArray(provider.blockedEmails) ? provider.blockedEmails.length : 0,
       unreadLikeMessages: providerMessages.filter((message) => message.from === "guest").length,
       nextBooking: sortedUpcomingBookings[0] || null,
@@ -2744,7 +2745,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     }
 
     if (panel === "activeBookings") {
-      return renderBookingList("Aktív foglalások", providerBookings);
+      return renderBookingList("Foglalt időpontok", providerBookings);
     }
 
     if (panel === "todayBookings") {
@@ -2752,7 +2753,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     }
 
     if (panel === "upcomingBookings") {
-      return renderBookingList("Jövőbeli foglalások", providerBookings.filter((booking) => booking.date && booking.date >= todayText));
+      return renderBookingList("Foglalt időpontok", providerBookings);
     }
 
     if (panel === "freeSlots") {
@@ -5630,6 +5631,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
   const premiumNeutralButtonStyle = {
     width: "min(100%, 360px)",
+    maxWidth: "100%",
     padding: "12px 16px",
     border: "none",
     borderRadius: "999px",
@@ -5862,64 +5864,76 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
 
       {mode === "forgotLogin" && (
-        <>
-          <h2>Elfelejtett jelszó</h2>
-          <p>Add meg a regisztrált email címed. Ha van hozzá szolgáltatói vagy vendég fiók, a rendszer emailben küldi a belépési adatokat.</p>
+        <div style={premiumPageStyle}>
+          <div style={guestFormCardStyle}>
+            <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#243b55" }}>Elfelejtett jelszó</h2>
+            <div style={premiumFormHeaderLineStyle}></div>
+            <p style={premiumHintStyle}>Add meg a regisztrált email címed. Ha van hozzá szolgáltatói vagy vendég fiók, emailben elküldjük a belépési adatokat.</p>
 
-          <input
-            placeholder="Email cím"
-            value={forgotLoginEmail}
-            onChange={(e) => setForgotLoginEmail(e.target.value)}
-            style={{ width: "280px", padding: "8px" }}
-          />
+            <div style={premiumFieldGroupStyle}>
+              <label style={premiumLabelStyle}>Email cím</label>
+              <input
+                placeholder="pelda@email.com"
+                value={forgotLoginEmail}
+                onChange={(e) => setForgotLoginEmail(e.target.value)}
+                style={premiumInputStyle}
+              />
+            </div>
 
-          <br /><br />
-          <button onClick={recoverAnyLogin}>Belépési adatok küldése emailben</button>
+            <button onClick={recoverAnyLogin} style={guestPrimaryActionStyle}>
+              Belépési adatok küldése
+            </button>
 
-          <br /><br />
-          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
-        </>
+            <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+          </div>
+        </div>
       )}
 
 
       {mode === "forgotProvider" && (
-        <>
-          <h2>Elfelejtett szolgáltatói belépés</h2>
-          <p>Add meg a regisztrált email címed. Teszt módban az app megmutatja az adatokat, élesben emailben küldené ki.</p>
+        <div style={premiumPageStyle}>
+          <div style={providerFormCardStyle}>
+            <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#243b55" }}>Elfelejtett szolgáltatói belépés</h2>
+            <div style={premiumFormHeaderLineStyle}></div>
+            <p style={premiumHintStyle}>Add meg a regisztrált szolgáltatói email címed. A belépési adatokat emailben küldjük ki.</p>
 
-          <input
-            placeholder="Szolgáltatói email cím"
-            value={forgotProviderEmail}
-            onChange={(e) => setForgotProviderEmail(e.target.value)}
-          />
+            <div style={premiumFieldGroupStyle}>
+              <label style={premiumLabelStyle}>Szolgáltatói email cím</label>
+              <input
+                placeholder="szolgaltato@email.com"
+                value={forgotProviderEmail}
+                onChange={(e) => setForgotProviderEmail(e.target.value)}
+                style={premiumInputStyle}
+              />
+            </div>
 
-          <br /><br />
-
-          <button onClick={recoverProviderLogin}>Belépési adatok megmutatása</button>
-
-          <br /><br />
-          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
-        </>
+            <button onClick={recoverProviderLogin} style={providerPrimaryActionStyle}>Belépési adatok küldése</button>
+            <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+          </div>
+        </div>
       )}
 
       {mode === "forgotGuest" && (
-        <>
-          <h2>Elfelejtett vendég belépés</h2>
-          <p>Add meg a regisztrált email címed. Teszt módban az app megmutatja az adatokat, élesben emailben küldené ki.</p>
+        <div style={premiumPageStyle}>
+          <div style={guestFormCardStyle}>
+            <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#5b4164" }}>Elfelejtett vendég belépés</h2>
+            <div style={premiumFormHeaderLineStyle}></div>
+            <p style={premiumHintStyle}>Add meg a regisztrált vendég email címed. A belépési adatokat emailben küldjük ki.</p>
 
-          <input
-            placeholder="Vendég email cím"
-            value={forgotGuestEmail}
-            onChange={(e) => setForgotGuestEmail(e.target.value)}
-          />
+            <div style={premiumFieldGroupStyle}>
+              <label style={premiumLabelStyle}>Vendég email cím</label>
+              <input
+                placeholder="vendeg@email.com"
+                value={forgotGuestEmail}
+                onChange={(e) => setForgotGuestEmail(e.target.value)}
+                style={premiumInputStyle}
+              />
+            </div>
 
-          <br /><br />
-
-          <button onClick={recoverGuestLogin}>Belépési adatok megmutatása</button>
-
-          <br /><br />
-          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
-        </>
+            <button onClick={recoverGuestLogin} style={guestPrimaryActionStyle}>Belépési adatok küldése</button>
+            <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+          </div>
+        </div>
       )}
 
       {mode === "createProvider" && (
@@ -6066,6 +6080,12 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       <button onClick={() => sendDeveloperMessage("provider", activeProvider.name, activeProvider.email)} style={providerSmallButtonStyle}>Üzenet elküldése</button>
                     </div>
                   )}
+
+                  <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(98, 84, 111, 0.12)" }}>
+                    <button onClick={deleteProviderAccount} style={dangerButtonStyle}>
+                      Szolgáltatói fiók törlése
+                    </button>
+                  </div>
                 </div>
               )}
 
@@ -6447,11 +6467,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               <br />
               <button onClick={() => setActiveProvider(null)} style={secondaryGhostButtonStyle}>Kijelentkezés</button>
 
-              <br /><br />
-
-              <button onClick={deleteProviderAccount} style={{ ...dangerButtonStyle, display: showProviderSettings ? "inline-block" : "none" }}>
-                Szolgáltatói fiók törlése
-              </button>
             </div>
           )}
 
