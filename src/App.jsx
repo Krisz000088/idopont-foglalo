@@ -103,6 +103,19 @@ function App() {
   }, []);
 
   useEffect(() => {
+    document.documentElement.lang = "hu";
+    document.documentElement.setAttribute("translate", "no");
+    document.body?.setAttribute("translate", "no");
+
+    if (!document.querySelector('meta[name="google"][content="notranslate"]')) {
+      const meta = document.createElement("meta");
+      meta.name = "google";
+      meta.content = "notranslate";
+      document.head.appendChild(meta);
+    }
+  }, []);
+
+  useEffect(() => {
     const key = `${mode || "home"}-${activeProvider ? "provider" : ""}-${activeGuest ? "guest" : ""}`;
 
     if (key !== "home--" && lastHistoryKeyRef.current !== key) {
@@ -1204,10 +1217,10 @@ function App() {
           const startIndex = getMondayBasedStartIndex(monthKey);
 
           return (
-            <div key={monthKey} style={premiumCalendarCardStyle}>
+            <div key={monthKey} style={premiumCalendarCardStyle} translate="no" className="notranslate">
               <h4>{getMonthLabel(monthKey)}</h4>
 
-              <div style={premiumCalendarGridStyle}>
+              <div style={premiumCalendarGridStyle} translate="no" className="notranslate">
                 <b>H</b>
                 <b>K</b>
                 <b>SZ</b>
@@ -1348,10 +1361,10 @@ function App() {
           const startIndex = getMondayBasedStartIndex(monthKey);
 
           return (
-            <div key={monthKey} style={premiumCalendarCardStyle}>
+            <div key={monthKey} style={premiumCalendarCardStyle} translate="no" className="notranslate">
               <h4>{getMonthLabel(monthKey)}</h4>
 
-              <div style={premiumCalendarGridStyle}>
+              <div style={premiumCalendarGridStyle} translate="no" className="notranslate">
                 <b>H</b>
                 <b>K</b>
                 <b>SZ</b>
@@ -2618,8 +2631,8 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     ];
 
     return (
-      <div style={{ border: "1px solid #75b82a", borderRadius: "10px", padding: "12px", marginTop: "16px", marginBottom: "16px", backgroundColor: "#f8fff3" }}>
-        <h3>Áttekintés</h3>
+      <div style={{ border: "1px solid rgba(117,184,42,0.45)", borderRadius: "22px", padding: "14px", marginTop: "16px", marginBottom: "16px", background: "linear-gradient(180deg, rgba(248,255,243,0.96) 0%, rgba(255,255,255,0.94) 100%)", boxShadow: "0 12px 30px rgba(36,59,85,0.10)" }}>
+        <h3 style={{ marginTop: 0, color: "#62546f" }}>Áttekintés</h3>
 
         <div
           style={{
@@ -2637,12 +2650,13 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
                 key={card.key}
                 onClick={() => setProviderOverviewPanel(active ? "" : card.key)}
                 style={{
-                  border: active ? "2px solid #1b5e20" : "1px solid #d6eac8",
-                  borderRadius: "10px",
-                  padding: "10px",
-                  backgroundColor: active ? "#e9f7df" : "white",
+                  border: active ? "2px solid #1b5e20" : "1px solid rgba(117,184,42,0.28)",
+                  borderRadius: "16px",
+                  padding: "12px 10px",
+                  background: active ? "linear-gradient(180deg, #e9f7df 0%, #ffffff 100%)" : "rgba(255,255,255,0.88)",
                   textAlign: "center",
                   cursor: "pointer",
+                  boxShadow: "0 8px 18px rgba(36,59,85,0.07)",
                 }}
                 title="Részletek megnyitása"
               >
@@ -5549,11 +5563,12 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     width: "100%",
     margin: "30px auto",
     fontFamily: "Arial",
-    padding: "20px",
+    padding: "18px 14px",
     boxSizing: "border-box",
     textAlign: "center",
     overflowX: "hidden",
     minWidth: 0,
+    minHeight: "100vh",
   };
 
   const premiumPageStyle = {
@@ -5561,7 +5576,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     maxWidth: "720px",
     boxSizing: "border-box",
     margin: "18px auto 0",
-    padding: "18px",
+    padding: "16px 12px",
     borderRadius: "24px",
     border: "1px solid rgba(98, 84, 111, 0.16)",
     background: "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,246,252,0.98) 100%)",
@@ -5640,11 +5655,11 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
   const premiumCalendarCardStyle = {
     width: "100%",
-    maxWidth: "100%",
+    maxWidth: "560px",
     overflowX: "hidden",
     boxSizing: "border-box",
     border: "1px solid rgba(98, 84, 111, 0.14)",
-    padding: "10px",
+    padding: "10px 8px",
     margin: "0 auto 16px",
     borderRadius: "18px",
     background: "rgba(255,255,255,0.86)",
@@ -5653,7 +5668,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
   const premiumCalendarGridStyle = {
     display: "grid",
     gridTemplateColumns: "repeat(7, minmax(0, 1fr))",
-    gap: "4px",
+    gap: "3px",
     textAlign: "center",
     width: "100%",
     maxWidth: "100%",
@@ -5664,12 +5679,12 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
   const premiumCalendarDayBaseStyle = {
     width: "100%",
     minWidth: 0,
-    minHeight: "46px",
-    padding: "5px 1px",
-    borderRadius: "12px",
+    minHeight: "42px",
+    padding: "4px 1px",
+    borderRadius: "11px",
     boxSizing: "border-box",
-    fontSize: "12px",
-    lineHeight: "1.12",
+    fontSize: "11px",
+    lineHeight: "1.08",
     overflow: "hidden",
     overflowWrap: "anywhere",
     display: "flex",
@@ -5724,7 +5739,9 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
   };
 
   const premiumLandingHintStyle = {
-    width: "min(100%, 520px)",
+    width: "100%",
+    maxWidth: "520px",
+    boxSizing: "border-box",
     margin: "28px auto 0",
     padding: "16px 18px",
     borderRadius: "22px",
@@ -5745,7 +5762,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
   };
 
   return (
-    <div style={appShellStyle} translate="no">
+    <div style={appShellStyle} translate="no" className="notranslate" lang="hu">
       <h1 style={premiumTitleStyle}>Időpont Foglaló</h1>
 
       {!mode && (
