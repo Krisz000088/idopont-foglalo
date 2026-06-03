@@ -3264,7 +3264,7 @@ function renderProviderOverviewPanel(provider, panel) {
             <h4>{selectedGuest.name || "Vendég adatai"}</h4>
             <p>Állapot: <b style={{ color: selectedGuestBlocked ? "#b00020" : "#1b5e20" }}>{selectedGuestBlocked ? "tiltott" : "aktív"}</b></p>
             <p>Email: <b>{selectedGuest.email || "nincs megadva"}</b></p>
-            <p>Telefon: <b>{selectedGuest.phone || "nincs megadva"}</b></p>
+            <p>Telefon: <b>{selectedGuest.phone || "nincs megadva"}</b>{selectedGuest.phone && renderPhoneCallLink(selectedGuest.phone)}</p>
 
             <div
               style={{
@@ -3456,8 +3456,22 @@ function renderProviderOverviewPanel(provider, panel) {
       return;
     }
 
-    if (guestAlreadyHasBookingOnDate(selectedProvider.id, activeGuest.email, selectedSlot.date)) {
-      alert("Erre a napra már van aktív foglalásod ennél a szolgáltatónál. Módosítani tudod a meglévő időpontodat, de újabbat nem foglalhatsz ugyanarra a napra.");
+    const existingBookingOnSelectedDate = guestBookings.find(
+      (booking) =>
+        booking.active &&
+        idsEqual(booking.providerId, selectedProvider.id) &&
+        idsEqual(booking.guestId, activeGuest.id) &&
+        booking.date === selectedSlot.date &&
+        (booking.guestEmail || "").toLowerCase() === (activeGuest.email || "").toLowerCase()
+    );
+
+    if (existingBookingOnSelectedDate) {
+      if (idsEqual(existingBookingOnSelectedDate.slotId, selectedSlot.id)) {
+        alert("Ez már a jelenlegi lefoglalt időpontod.");
+        return;
+      }
+
+      await confirmChangeBooking(existingBookingOnSelectedDate, selectedProvider, selectedSlot);
       return;
     }
 
@@ -3625,24 +3639,27 @@ function renderProviderOverviewPanel(provider, panel) {
     setChangeCalendarDate("");
   }
 
-  async function confirmChangeBooking(booking) {
-    if (!activeGuest || !changeProvider || !changeSlot) {
+  async function confirmChangeBooking(booking, providerOverride = null, slotOverride = null) {
+    const providerForChange = providerOverride || changeProvider;
+    const slotForChange = slotOverride || changeSlot;
+
+    if (!activeGuest || !providerForChange || !slotForChange) {
       alert("Válassz új időpontot.");
       return;
     }
 
-    if (isSlotInPast(changeSlot)) {
+    if (isSlotInPast(slotForChange)) {
       alert("Ez az időpont már elmúlt, ezért nem választható.");
       setChangeSlot(null);
       return;
     }
 
-    if (isGuestBlockedByProvider(changeProvider, activeGuest.email)) {
+    if (isGuestBlockedByProvider(providerForChange, activeGuest.email)) {
       alert("Ez a szolgáltató letiltott téged, ezért nem tudsz nála időpontot módosítani.");
       return;
     }
 
-    const blockedInSupabase = await isGuestBlockedInSupabase(changeProvider, activeGuest.email);
+    const blockedInSupabase = await isGuestBlockedInSupabase(providerForChange, activeGuest.email);
 
     if (blockedInSupabase) {
       alert("Ez a szolgáltató letiltott téged, ezért nem tudsz nála időpontot módosítani.");
@@ -3652,9 +3669,9 @@ function renderProviderOverviewPanel(provider, panel) {
     const alreadyHasAnotherBookingOnDate = guestBookings.some(
       (otherBooking) =>
         otherBooking.active &&
-        otherBooking.id !== booking.id &&
-        otherBooking.providerId === booking.providerId &&
-        otherBooking.date === changeSlot.date &&
+        !idsEqual(otherBooking.id, booking.id) &&
+        idsEqual(otherBooking.providerId, booking.providerId) &&
+        otherBooking.date === slotForChange.date &&
         (otherBooking.guestEmail || "").toLowerCase() === (activeGuest.email || "").toLowerCase()
     );
 
@@ -3664,14 +3681,14 @@ function renderProviderOverviewPanel(provider, panel) {
     }
 
     const oldText = `${booking.date} ${booking.time}`;
-    const newText = `${changeSlot.date} ${changeSlot.time}`;
+    const newText = `${slotForChange.date} ${slotForChange.time}`;
 
     const updatedProviders = providers.map((provider) =>
       idsEqual(provider.id, booking.providerId)
         ? {
             ...provider,
             slots: provider.slots.map((slot) => {
-              if (slot.id === booking.slotId) {
+              if (idsEqual(slot.id, booking.slotId)) {
                 return {
                   ...slot,
                   booked: false,
@@ -3684,7 +3701,7 @@ function renderProviderOverviewPanel(provider, panel) {
                 };
               }
 
-              if (slot.id === changeSlot.id) {
+              if (idsEqual(slot.id, slotForChange.id)) {
                 return {
                   ...slot,
                   booked: true,
@@ -3713,15 +3730,15 @@ function renderProviderOverviewPanel(provider, panel) {
     );
 
     const updatedBookings = guestBookings.map((b) =>
-      b.id === booking.id
+      idsEqual(b.id, booking.id)
         ? {
             ...b,
-            slotId: changeSlot.id,
+            slotId: slotForChange.id,
             oldDate: b.date,
             oldTime: b.time,
-            date: changeSlot.date,
-            day: changeSlot.day,
-            time: changeSlot.time,
+            date: slotForChange.date,
+            day: slotForChange.day,
+            time: slotForChange.time,
             changed: true,
           }
         : b
@@ -3734,12 +3751,12 @@ function renderProviderOverviewPanel(provider, panel) {
       guestId: booking.guestId,
       guestName: booking.guestName || activeGuest.name,
       guestEmail: booking.guestEmail || activeGuest.email,
-      slotId: changeSlot.id,
-      date: changeSlot.date,
-      time: changeSlot.time,
+      slotId: slotForChange.id,
+      date: slotForChange.date,
+      time: slotForChange.time,
       from: "guest",
       fromName: activeGuest.name || "Vendég",
-      toName: booking.providerName || changeProvider.name || "Szolgáltató",
+      toName: booking.providerName || providerForChange.name || "Szolgáltató",
       text: `A vendég módosította az időpontot. Régi időpont: ${oldText}. Új időpont: ${newText}.`,
       type: "change",
       createdAt: new Date().toISOString(),
@@ -3750,7 +3767,7 @@ function renderProviderOverviewPanel(provider, panel) {
     setMessages([changeMessage, ...messages]);
     refreshProviderViews(updatedProviders, booking.providerId);
 
-    const oldSlotForSupabase = changeProvider.slots.find((slot) => slot.id === booking.slotId) || {
+    const oldSlotForSupabase = providerForChange.slots.find((slot) => idsEqual(slot.id, booking.slotId)) || {
       id: booking.slotId,
       date: booking.date,
       time: booking.time,
@@ -3758,20 +3775,20 @@ function renderProviderOverviewPanel(provider, panel) {
 
     const supabaseChangeResult = await syncBookingChangeToSupabase(
       booking,
-      changeProvider,
+      providerForChange,
       oldSlotForSupabase,
-      changeSlot
+      slotForChange
     );
 
     const supabaseMessageResult = await saveMessageToSupabase(changeMessage, {
-      provider: changeProvider,
+      provider: providerForChange,
       guest: activeGuest,
-      slot: changeSlot,
+      slot: slotForChange,
     });
 
     const changeEmailResult = await sendBookingChangedEmails({
       booking,
-      provider: changeProvider,
+      provider: providerForChange,
       guest: activeGuest,
       oldText,
       newText,
@@ -3829,7 +3846,7 @@ function renderProviderOverviewPanel(provider, panel) {
     );
 
     const updatedBookings = guestBookings.map((b) =>
-      b.id === booking.id
+      idsEqual(b.id, booking.id)
         ? {
             ...b,
             active: false,
@@ -5813,8 +5830,18 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     : [];
 
   const activeGuestBookings = activeGuest
-    ? guestBookings.filter((b) => b.guestId === activeGuest.id && b.active)
+    ? guestBookings.filter((b) => idsEqual(b.guestId, activeGuest.id) && b.active)
     : [];
+
+  const selectedExistingBooking = activeGuest && selectedProvider && selectedSlot
+    ? guestBookings.find(
+        (booking) =>
+          booking.active &&
+          idsEqual(booking.guestId, activeGuest.id) &&
+          idsEqual(booking.providerId, selectedProvider.id) &&
+          booking.date === selectedSlot.date
+      )
+    : null;
 
   const cancelledGuestBookings = activeGuest
     ? guestBookings.filter((b) => b.guestId === activeGuest.id && b.cancelledByProvider)
@@ -6561,12 +6588,17 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                     {getVisibleProviderNotifications(activeProvider).length === 0 && <p>Még nincs értesítés.</p>}
 
                     {getVisibleProviderNotifications(activeProvider).length > 0 && (
-                      <button
-                        onClick={clearProviderNotifications}
-                        style={{ ...dangerButtonStyle, marginBottom: "12px" }}
-                      >
-                        Értesítések törlése
-                      </button>
+                      <div style={{ ...premiumPanelStyle, margin: "10px 0 14px", textAlign: "center", background: "linear-gradient(135deg, rgba(255,245,247,0.96), rgba(255,255,255,0.96))" }}>
+                        <p style={{ marginTop: 0, marginBottom: "10px", color: "#6b2637", fontWeight: "700" }}>
+                          Ha már feldolgoztad őket, egy gombbal törölheted a látható értesítéseket.
+                        </p>
+                        <button
+                          onClick={clearProviderNotifications}
+                          style={{ ...dangerButtonStyle, width: "min(100%, 320px)", boxShadow: "0 10px 24px rgba(155, 28, 49, 0.22)" }}
+                        >
+                          Értesítések törlése
+                        </button>
+                      </div>
                     )}
 
                     {getVisibleProviderNotifications(activeProvider).map((n) => (
@@ -7180,7 +7212,9 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                     </>
                   )}
 
-                  <button onClick={bookSlot} style={guestSmallButtonStyle}>Időpont lefoglalása</button>
+                  <button onClick={bookSlot} style={guestSmallButtonStyle}>
+                    {selectedExistingBooking ? "Időpont módosítása" : "Időpont lefoglalása"}
+                  </button>
                 </>
               )}
 
