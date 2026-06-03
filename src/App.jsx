@@ -2902,10 +2902,10 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     const statCards = [
       { key: "todayBookings", label: "Mai foglalások", value: stats.todayBookings },
       { key: "bookedSlots", label: "Foglalt időpontok", value: stats.bookedSlots },
-      { key: "registeredGuests", label: "Regisztrált vendégek", value: stats.registeredGuests },
       { key: "freeSlots", label: "Szabad időpontok", value: stats.freeSlots },
-      { key: "blockedGuests", label: "Letiltott vendégek", value: stats.blockedGuests },
-      { key: "guestMessages", label: "Vendégüzenetek", value: stats.unreadLikeMessages },
+      { key: "guestMessages", label: "Vendég üzenetek", value: stats.unreadLikeMessages },
+      { key: "registeredGuests", label: "Regisztrált vendégek", value: stats.registeredGuests },
+      { key: "blockedGuests", label: "Tiltott vendégek", value: stats.blockedGuests },
     ];
 
     return (
@@ -2914,8 +2914,8 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
         <div
           style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            display: "flex",
+            flexDirection: "column",
             gap: "10px",
             marginBottom: "12px",
           }}
@@ -2924,23 +2924,47 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
             const active = providerOverviewPanel === card.key;
 
             return (
-              <button
+              <div
                 key={card.key}
-                onClick={() => setProviderOverviewPanel(active ? "" : card.key)}
                 style={{
                   border: active ? "2px solid #1b5e20" : "1px solid rgba(117,184,42,0.28)",
-                  borderRadius: "16px",
-                  padding: "12px 10px",
-                  background: active ? "linear-gradient(180deg, #e9f7df 0%, #ffffff 100%)" : "rgba(255,255,255,0.88)",
-                  textAlign: "center",
-                  cursor: "pointer",
-                  boxShadow: "0 8px 18px rgba(36,59,85,0.07)",
+                  borderRadius: "18px",
+                  background: active ? "linear-gradient(180deg, #f2ffe9 0%, #ffffff 100%)" : "rgba(255,255,255,0.88)",
+                  boxShadow: active ? "0 12px 28px rgba(27,94,32,0.14)" : "0 8px 18px rgba(36,59,85,0.07)",
+                  overflow: "hidden",
                 }}
-                title="Részletek megnyitása"
               >
-                <div style={{ fontSize: "22px", fontWeight: "bold", color: "#1b5e20" }}>{card.value}</div>
-                <div style={{ fontSize: "12px", color: "#555" }}>{card.label}</div>
-              </button>
+                <button
+                  onClick={() => setProviderOverviewPanel(active ? "" : card.key)}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    padding: "13px 14px",
+                    background: "transparent",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                  title={active ? "Részletek bezárása" : "Részletek megnyitása"}
+                >
+                  <span>
+                    <span style={{ display: "block", fontSize: "13px", color: "#555", fontWeight: "700" }}>{card.label}</span>
+                    <span style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "#1b5e20", lineHeight: 1.1 }}>{card.value}</span>
+                  </span>
+                  <span style={{ color: active ? "#1b5e20" : "#777", fontSize: "18px", fontWeight: "800" }}>
+                    {active ? "−" : "+"}
+                  </span>
+                </button>
+
+                {active && (
+                  <div style={{ padding: "0 12px 12px" }}>
+                    {renderProviderOverviewPanel(provider, card.key)}
+                  </div>
+                )}
+              </div>
             );
           })}
         </div>
@@ -2952,8 +2976,6 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
         ) : (
           <p style={{ marginBottom: 0 }}>Nincs közelgő foglalás.</p>
         )}
-
-        {renderProviderOverviewPanel(provider, providerOverviewPanel)}
       </div>
     );
   }
@@ -3088,7 +3110,7 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "blockedGuests") {
       return (
         <div style={panelBoxStyle}>
-          <h4 style={{ marginTop: 0 }}>Letiltott vendégek</h4>
+          <h4 style={{ marginTop: 0 }}>Tiltott vendégek</h4>
           {(provider.blockedEmails || []).length === 0 && <p>Nincs letiltott vendég.</p>}
           {(provider.blockedEmails || []).map((email) => {
             const blockedGuest = guests.find((guest) => normalizeEmail(guest.email) === normalizeEmail(email));
@@ -3122,7 +3144,7 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "guestMessages") {
       return (
         <div style={panelBoxStyle}>
-          <h4 style={{ marginTop: 0 }}>Vendégüzenetek</h4>
+          <h4 style={{ marginTop: 0 }}>Vendég üzenetek</h4>
           {guestMessages.length === 0 && <p>Nincs vendégtől érkezett üzenet.</p>}
           {guestMessages.map((message) => (
             <div key={message.id} style={smallCardStyle}>
@@ -6177,52 +6199,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
             Regisztrálj, adj meg szabad időpontokat, a vendégek pedig pár kattintással foglalhatnak.
           </div>
 
-          <div
-            style={{
-              position: "fixed",
-              left: "10px",
-              bottom: "10px",
-              zIndex: 9999,
-              textAlign: "left",
-            }}
-          >
-            <button
-              onClick={() => setShowDeveloperTools(!showDeveloperTools)}
-              style={{
-                fontSize: "11px",
-                padding: "4px 8px",
-                opacity: 0.55,
-                borderRadius: "6px",
-                cursor: "pointer",
-              }}
-            >
-              Fejlesztői gomb
-            </button>
-
-            {showDeveloperTools && (
-              <div
-                style={{
-                  marginTop: "8px",
-                  padding: "10px",
-                  border: "1px solid #bbb",
-                  borderRadius: "8px",
-                  backgroundColor: "white",
-                  boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
-                  width: "240px",
-                }}
-              >
-                <button onClick={generateBigStressTestData}>Nagy stresszteszt generálása</button>
-                <br /><br />
-
-                <button onClick={clearAllData}>Helyi tesztadatok teljes törlése</button>
-                <br /><br />
-
-                <button onClick={clearSupabaseTestData}>Supabase tesztadatok törlése</button>
-
-                {renderTestAccessData()}
-              </div>
-            )}
-          </div>
         </>
       )}
 
