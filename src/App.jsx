@@ -1463,11 +1463,15 @@ function App() {
   }
 
   function normalizeGuestCode(code) {
-    return code.trim().toUpperCase();
+    return String(code || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^A-Z0-9_-]/g, "");
   }
 
   function isValidGuestCode(code) {
-    return /^[A-Z0-9_-]{6,}$/.test(code);
+    return /^[A-Z0-9_-]{6,}$/.test(normalizeGuestCode(code));
   }
 
   async function createProvider() {
@@ -1521,15 +1525,23 @@ function App() {
 
     setProviders([...providers, newProvider]);
 
-    const { error } = await supabase.from("szolgaltatok").insert([
-      {
-        nev: providerName,
-        profilnev: "",
-        email: providerEmail,
-        pin: providerPin,
-        vendegkod: normalizedGuestCode,
-      },
-    ]);
+    const providerInsertRow = {
+      nev: providerName,
+      profilnev: "",
+      email: providerEmail,
+      pin: providerPin,
+      vendegkod: normalizedGuestCode,
+      email_ertesites: providerEmailNotifications,
+      pin_belepes: true,
+    };
+
+    let { error } = await supabase.from("szolgaltatok").insert([providerInsertRow]);
+
+    if (error && (String(error.message || "").toLowerCase().includes("email_ertesites") || String(error.message || "").toLowerCase().includes("pin_belepes"))) {
+      const { email_ertesites, pin_belepes, ...fallbackProviderRow } = providerInsertRow;
+      const fallbackResult = await supabase.from("szolgaltatok").insert([fallbackProviderRow]);
+      error = fallbackResult.error;
+    }
 
     if (error) {
       console.error(error);
@@ -1574,16 +1586,18 @@ function App() {
     const loginEmailLower = loginEmail.toLowerCase();
     const loginPinValue = (loginPin || "").trim();
 
-    let found = providers.find(
-      (p) => (p.email || "").toLowerCase() === loginEmailLower && p.pin === loginPinValue
-    );
+    if (!loginEmail) {
+      alert("Add meg az email címet.");
+      return;
+    }
+
+    let found = providers.find((p) => (p.email || "").toLowerCase() === loginEmailLower);
 
     if (!found) {
       const { data, error } = await supabase
         .from("szolgaltatok")
         .select("*")
         .ilike("email", loginEmail)
-        .eq("pin", loginPinValue)
         .maybeSingle();
 
       if (error) {
@@ -1606,6 +1620,18 @@ function App() {
     }
 
     if (!found) {
+      alert("Nem találtam szolgáltatót ezzel az email címmel.");
+      return;
+    }
+
+    const needsPin = found.pinLoginEnabled !== false;
+
+    if (needsPin && !loginPinValue) {
+      alert("Ehhez a szolgáltatói fiókhoz PIN szükséges.");
+      return;
+    }
+
+    if (needsPin && String(found.pin || "") !== loginPinValue) {
       alert("Hibás email cím vagy PIN.");
       return;
     }
@@ -1618,9 +1644,12 @@ function App() {
       exceptionDates: Array.isArray(found.exceptionDates) ? found.exceptionDates : [],
       breaks: Array.isArray(found.breaks) ? found.breaks : [],
       blockedEmails: Array.isArray(found.blockedEmails) ? found.blockedEmails : [],
+      emailNotifications: found.emailNotifications ?? true,
+      pinLoginEnabled: found.pinLoginEnabled !== false,
     };
 
     setActiveProvider(normalizedProvider);
+    setProviderEmailNotifications(normalizedProvider.emailNotifications !== false);
     setProviderOverviewPanel("todayBookings");
     setWorkDays(normalizedProvider.workDays || []);
     setWorkStart(normalizedProvider.workStart || "08:00");
@@ -1974,29 +2003,28 @@ function App() {
       pin: guestPin,
       providerIds: [],
       notifications: [],
+      emailNotifications: guestEmailNotifications,
+      pinLoginEnabled: true,
     };
 
     setGuests([...guests, newGuest]);
 
-    const { error } = await supabase.from("vendegek").insert([
-      {
-        nev: guestName,
-        email: guestEmail,
-        telefon: guestPhone,
-        pin: guestPin,
-      },
-    ]);
+    const guestInsertRow = {
+      nev: guestName,
+      email: guestEmail,
+      telefon: guestPhone,
+      pin: guestPin,
+      email_ertesites: guestEmailNotifications,
+      pin_belepes: true,
+    };
+
+    let { error } = await supabase.from("vendegek").insert([guestInsertRow]);
 
     if (error && String(error.message || "").toLowerCase().includes("telefon")) {
       console.warn("A vendegek.telefon oszlop még nem létezik, ezért telefonszám nélkül mentem.", error);
 
-      const { error: fallbackError } = await supabase.from("vendegek").insert([
-        {
-          nev: guestName,
-          email: guestEmail,
-          pin: guestPin,
-        },
-      ]);
+      const { telefon, email_ertesites, pin_belepes, ...fallbackGuestRow } = guestInsertRow;
+      const { error: fallbackError } = await supabase.from("vendegek").insert([fallbackGuestRow]);
 
       if (fallbackError) {
         console.error(fallbackError);
@@ -2012,6 +2040,12 @@ function App() {
       setGuestLoginEmail(guestEmail);
       setMode("guestLogin");
       return;
+    }
+
+    if (error && (String(error.message || "").toLowerCase().includes("email_ertesites") || String(error.message || "").toLowerCase().includes("pin_belepes"))) {
+      const { email_ertesites, pin_belepes, ...fallbackGuestRow } = guestInsertRow;
+      const fallbackResult = await supabase.from("vendegek").insert([fallbackGuestRow]);
+      error = fallbackResult.error;
     }
 
     if (error) {
@@ -2041,6 +2075,62 @@ function App() {
       emailNotifications: row.email_ertesites ?? true,
       pinLoginEnabled: row.pin_belepes !== false,
     };
+  }
+
+  async function updateProviderPreference(field, value) {
+    if (!activeProvider) return;
+
+    const updatedProvider = { ...activeProvider, [field]: value };
+    const updatedProviders = providers.map((provider) =>
+      provider.id === activeProvider.id ? { ...provider, [field]: value } : provider
+    );
+
+    setProviders(updatedProviders);
+    setActiveProvider(updatedProvider);
+
+    if (field === "emailNotifications") setProviderEmailNotifications(value);
+
+    const providerDbId = await getSupabaseProviderId(activeProvider);
+    if (!providerDbId) return;
+
+    const column = field === "pinLoginEnabled" ? "pin_belepes" : "email_ertesites";
+    const { error } = await supabase
+      .from("szolgaltatok")
+      .update({ [column]: value })
+      .eq("id", providerDbId);
+
+    if (error) {
+      console.warn("A beállítás helyben frissült, de Supabase-ben még hiányozhat az oszlop:", error);
+      alert("A beállítás helyben frissült. Ha újratöltés után nem marad meg, futtasd a megadott Supabase SQL-t.");
+    }
+  }
+
+  async function updateGuestPreference(field, value) {
+    if (!activeGuest) return;
+
+    const updatedGuest = { ...activeGuest, [field]: value };
+    const updatedGuests = guests.map((guest) =>
+      guest.id === activeGuest.id ? { ...guest, [field]: value } : guest
+    );
+
+    setGuests(updatedGuests);
+    setActiveGuest(updatedGuest);
+
+    if (field === "emailNotifications") setGuestEmailNotifications(value);
+
+    const guestDbId = await getSupabaseGuestId(activeGuest);
+    if (!guestDbId) return;
+
+    const column = field === "pinLoginEnabled" ? "pin_belepes" : "email_ertesites";
+    const { error } = await supabase
+      .from("vendegek")
+      .update({ [column]: value })
+      .eq("id", guestDbId);
+
+    if (error) {
+      console.warn("A beállítás helyben frissült, de Supabase-ben még hiányozhat az oszlop:", error);
+      alert("A beállítás helyben frissült. Ha újratöltés után nem marad meg, futtasd a megadott Supabase SQL-t.");
+    }
   }
 
   async function updateActiveGuestPhone() {
@@ -2089,16 +2179,18 @@ function App() {
     const loginEmailLower = loginEmail.toLowerCase();
     const loginPinValue = (guestLoginPin || "").trim();
 
-    let found = guests.find(
-      (g) => (g.email || "").toLowerCase() === loginEmailLower && g.pin === loginPinValue
-    );
+    if (!loginEmail) {
+      alert("Add meg az email címet.");
+      return;
+    }
+
+    let found = guests.find((g) => (g.email || "").toLowerCase() === loginEmailLower);
 
     if (!found) {
       const { data, error } = await supabase
         .from("vendegek")
         .select("*")
         .ilike("email", loginEmail)
-        .eq("pin", loginPinValue)
         .maybeSingle();
 
       if (error) {
@@ -2121,6 +2213,18 @@ function App() {
     }
 
     if (!found) {
+      alert("Nem találtam vendéget ezzel az email címmel.");
+      return;
+    }
+
+    const needsPin = found.pinLoginEnabled !== false;
+
+    if (needsPin && !loginPinValue) {
+      alert("Ehhez a vendég fiókhoz PIN szükséges.");
+      return;
+    }
+
+    if (needsPin && String(found.pin || "") !== loginPinValue) {
       alert("Hibás vendég email vagy PIN.");
       return;
     }
@@ -2129,20 +2233,13 @@ function App() {
       ...found,
       providerIds: Array.isArray(found.providerIds) ? found.providerIds : [],
       notifications: Array.isArray(found.notifications) ? found.notifications : [],
+      emailNotifications: found.emailNotifications ?? true,
+      pinLoginEnabled: found.pinLoginEnabled !== false,
     };
 
     setActiveGuest(normalizedGuest);
+    setGuestEmailNotifications(normalizedGuest.emailNotifications !== false);
     setEditableGuestPhone(normalizedGuest.phone || "");
-
-    const providerCancelledNotice = (normalizedGuest.notifications || []).find((notification) =>
-      String(notification.text || "").toLowerCase().includes("törölte az időpontodat") ||
-      String(notification.message || "").toLowerCase().includes("időpontod törölve")
-    );
-
-    if (providerCancelledNotice) {
-      alert(`${providerCancelledNotice.text || "A szolgáltató törölt egy időpontodat."}${providerCancelledNotice.message ? "\n\n" + providerCancelledNotice.message : ""}`);
-    }
-
     setGuestLoginEmail("");
     setGuestLoginPin("");
   }
@@ -5978,7 +6075,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               style={premiumInputStyle}
               placeholder="MONI-2026"
               value={guestCode}
-              onChange={(e) => setGuestCode(e.target.value.toUpperCase())}
+              onChange={(e) => setGuestCode(normalizeGuestCode(e.target.value))}
             />
           </div>
 
@@ -6010,8 +6107,8 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               </div>
 
               <div style={premiumFieldGroupStyle}>
-                <label style={premiumLabelStyle}>PIN</label>
-                <input style={premiumInputStyle} placeholder="4 jegyű PIN" value={loginPin} onChange={(e) => setLoginPin(e.target.value)} maxLength="4" />
+                <label style={premiumLabelStyle}>PIN <span style={{ fontWeight: 400, color: "#82758d" }}>(ha a fiók kéri)</span></label>
+                <input style={premiumInputStyle} placeholder="4 jegyű PIN vagy üresen, ha kikapcsoltad" value={loginPin} onChange={(e) => setLoginPin(e.target.value)} maxLength="4" />
               </div>
 
               <button onClick={providerLogin} style={providerPrimaryActionStyle}>Belépés</button>
@@ -6067,8 +6164,24 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   <div style={premiumToggleRowStyle}>
                     <span>Email értesítés foglalásokról</span>
                     <label>
-                      <input type="checkbox" checked={providerEmailNotifications} onChange={(e) => setProviderEmailNotifications(e.target.checked)} />
-                      {" "}{providerEmailNotifications ? "Bekapcsolva" : "Kikapcsolva"}
+                      <input
+                        type="checkbox"
+                        checked={(activeProvider.emailNotifications ?? providerEmailNotifications) !== false}
+                        onChange={(e) => updateProviderPreference("emailNotifications", e.target.checked)}
+                      />
+                      {" "}{(activeProvider.emailNotifications ?? providerEmailNotifications) !== false ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+
+                  <div style={premiumToggleRowStyle}>
+                    <span>PIN kérése belépéskor</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={activeProvider.pinLoginEnabled !== false}
+                        onChange={(e) => updateProviderPreference("pinLoginEnabled", e.target.checked)}
+                      />
+                      {" "}{activeProvider.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
                     </label>
                   </div>
                   <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
@@ -6102,7 +6215,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                     <input
                       placeholder="Új vendégkód, pl. MONI-2026"
                       value={newGuestCode}
-                      onChange={(e) => setNewGuestCode(e.target.value.toUpperCase())}
+                      onChange={(e) => setNewGuestCode(normalizeGuestCode(e.target.value))}
                       style={premiumInlineInputStyle}
                     />
                     <p>Legalább 6 karakter. A már csatlakozott vendégek megmaradnak.</p>
@@ -6470,8 +6583,12 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
             </div>
           )}
 
-          <br /><br />
-          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+          {activeProvider && (
+            <>
+              <br /><br />
+              <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+            </>
+          )}
         </>
       )}
 
@@ -6554,10 +6671,10 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               </div>
 
               <div style={premiumFieldGroupStyle}>
-                <label style={premiumLabelStyle}>PIN</label>
+                <label style={premiumLabelStyle}>PIN <span style={{ fontWeight: 400, color: "#82758d" }}>(ha a fiók kéri)</span></label>
                 <input
                   style={premiumInputStyle}
-                  placeholder="4 jegyű vendég PIN"
+                  placeholder="4 jegyű PIN vagy üresen, ha kikapcsoltad"
                   value={guestLoginPin}
                   onChange={(e) => setGuestLoginPin(e.target.value)}
                   maxLength="4"
@@ -6585,8 +6702,24 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   <div style={premiumToggleRowStyle}>
                     <span>Email értesítés foglalásokról</span>
                     <label>
-                      <input type="checkbox" checked={guestEmailNotifications} onChange={(e) => setGuestEmailNotifications(e.target.checked)} />
-                      {" "}{guestEmailNotifications ? "Bekapcsolva" : "Kikapcsolva"}
+                      <input
+                        type="checkbox"
+                        checked={(activeGuest.emailNotifications ?? guestEmailNotifications) !== false}
+                        onChange={(e) => updateGuestPreference("emailNotifications", e.target.checked)}
+                      />
+                      {" "}{(activeGuest.emailNotifications ?? guestEmailNotifications) !== false ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+
+                  <div style={premiumToggleRowStyle}>
+                    <span>PIN kérése belépéskor</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={activeGuest.pinLoginEnabled !== false}
+                        onChange={(e) => updateGuestPreference("pinLoginEnabled", e.target.checked)}
+                      />
+                      {" "}{activeGuest.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
                     </label>
                   </div>
                   <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...guestSmallButtonStyle, marginTop: "12px" }}>
@@ -7007,8 +7140,12 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
             </div>
           )}
 
-          <br /><br />
-          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+          {activeGuest && (
+            <>
+              <br /><br />
+              <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>Vissza</button>
+            </>
+          )}
         </>
       )}
     </div>
