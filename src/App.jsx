@@ -80,6 +80,7 @@ function App() {
   const [guestNewPin, setGuestNewPin] = useState("");
   const [guestNewPinAgain, setGuestNewPinAgain] = useState("");
   const [providerOverviewPanel, setProviderOverviewPanel] = useState("");
+  const [guestOverviewPanel, setGuestOverviewPanel] = useState("todayGuestBookings");
   const [showDeveloperTools, setShowDeveloperTools] = useState(false);
   const [showProviderSettings, setShowProviderSettings] = useState(false);
   const [showGuestSettings, setShowGuestSettings] = useState(false);
@@ -2460,6 +2461,7 @@ function App() {
       return [...withoutDuplicate, normalizedGuest];
     });
     setActiveGuest(normalizedGuest);
+    setGuestOverviewPanel("todayGuestBookings");
     setGuestEmailNotifications(normalizedGuest.emailNotifications !== false);
     setEditableGuestPhone(normalizedGuest.phone || "");
     setGuestLoginEmail("");
@@ -3272,6 +3274,343 @@ function renderProviderOverviewPanel(provider, panel) {
     return null;
   }
 
+
+  function getGuestActiveBookings(guest) {
+    if (!guest) return [];
+
+    return guestBookings
+      .filter((booking) => booking && booking.active && idsEqual(booking.guestId, guest.id))
+      .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+  }
+
+  function getGuestCancelledBookings(guest) {
+    if (!guest) return [];
+
+    return guestBookings
+      .filter((booking) => booking && idsEqual(booking.guestId, guest.id) && !booking.active && (booking.cancelledByGuest || booking.cancelledByProvider))
+      .sort((a, b) => `${b.date || ""} ${b.time || ""}`.localeCompare(`${a.date || ""} ${a.time || ""}`));
+  }
+
+  function getVisibleGuestMessages(guestId) {
+    return getMessagesForGuest(guestId).filter((message) => (message?.type || "message") === "message");
+  }
+
+  function getGuestStats(guest) {
+    if (!guest) {
+      return {
+        todayBookings: 0,
+        activeBookings: 0,
+        guestMessages: 0,
+        guestNotifications: 0,
+        cancelledBookings: 0,
+      };
+    }
+
+    const todayText = formatDate(new Date());
+    const activeBookings = getGuestActiveBookings(guest);
+
+    return {
+      todayBookings: activeBookings.filter((booking) => booking.date === todayText).length,
+      activeBookings: activeBookings.length,
+      guestMessages: getVisibleGuestMessages(guest.id).length,
+      guestNotifications: (guest.notifications || []).length,
+      cancelledBookings: getGuestCancelledBookings(guest).length,
+    };
+  }
+
+  function renderGuestBookingCard(booking, compact = false) {
+    return (
+      <div key={booking.id} style={premiumListCardStyle}>
+        <b>{booking.providerName || "Szolgáltató"}</b>
+        <br />
+        {formatDateHu(booking.date)} — {booking.day || ""} — {booking.time}
+        {booking.service && (
+          <>
+            <br />
+            Szolgáltatás: {booking.service}
+          </>
+        )}
+        {booking.note && (
+          <>
+            <br />
+            Megjegyzés: {booking.note}
+          </>
+        )}
+        {booking.changed && (
+          <>
+            <br />
+            Módosítva. Régi időpont: {formatDateHu(booking.oldDate)} {booking.oldTime}
+          </>
+        )}
+
+        {!compact && (
+          <>
+            <div style={{ marginTop: "12px" }}>
+              <input
+                placeholder="Üzenet a szolgáltatónak"
+                value={guestMessageTexts[booking.id] || ""}
+                onChange={(e) =>
+                  setGuestMessageTexts({
+                    ...guestMessageTexts,
+                    [booking.id]: e.target.value,
+                  })
+                }
+                style={{ ...premiumInlineInputStyle, width: "100%" }}
+              />
+            </div>
+
+            <div style={premiumActionButtonRowStyle}>
+              <button
+                onClick={() => sendGuestMessageToProvider(booking)}
+                style={{ ...guestSmallButtonStyle, ...premiumFullWidthMobileButtonStyle }}
+              >
+                Üzenet írása
+              </button>
+              <button
+                onClick={() => startChangeBooking(booking)}
+                style={{ ...guestSmallButtonStyle, ...premiumFullWidthMobileButtonStyle }}
+              >
+                Időpont módosítása
+              </button>
+              <button
+                onClick={() => cancelBookingByGuest(booking)}
+                style={{ ...dangerButtonStyle, ...premiumFullWidthMobileButtonStyle }}
+              >
+                Időpont lemondása
+              </button>
+            </div>
+
+            {changeBookingId === booking.id && changeProvider && (
+              <div style={{ ...premiumPanelStyle, marginTop: "12px" }}>
+                <h4>Új időpont választása</h4>
+
+                <h4>Válassz új napot</h4>
+                {renderCalendar(changeProvider, changeCalendarDate, (date) => {
+                  setChangeCalendarDate(date);
+                  setChangeSlot(null);
+                })}
+
+                {changeCalendarDate && (
+                  <>
+                    <h4>Szabad időpontok ezen a napon: {formatDateHu(changeCalendarDate)}</h4>
+
+                    {getAvailableSlotsForDate(changeProvider, changeCalendarDate).map((slot) => (
+                      <button
+                        key={slot.id}
+                        onClick={() => setChangeSlot(slot)}
+                        style={{
+                          ...guestSmallButtonStyle,
+                          display: "block",
+                          margin: "8px auto",
+                          opacity: changeSlot?.id === slot.id ? 1 : 0.82,
+                          transform: changeSlot?.id === slot.id ? "scale(1.03)" : "none",
+                          background: changeSlot?.id === slot.id
+                            ? "linear-gradient(135deg, #b8860b 0%, #ffcf5c 45%, #7f5a83 100%)"
+                            : guestSmallButtonStyle.background,
+                          border: changeSlot?.id === slot.id ? "3px solid #ffe29a" : guestSmallButtonStyle.border,
+                        }}
+                      >
+                        {changeSlot?.id === slot.id ? `✓ ${slot.time}` : slot.time}
+                      </button>
+                    ))}
+                  </>
+                )}
+
+                <p>Új kiválasztott időpont: {changeSlot ? `${formatDateHu(changeSlot.date)} ${changeSlot.time}` : "-"}</p>
+
+                <button onClick={() => confirmChangeBooking(booking)} style={guestSmallButtonStyle}>Módosítás mentése</button>
+                <button onClick={cancelChangeBooking} style={{ ...premiumNeutralButtonStyle, marginLeft: "10px" }}>Mégse</button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    );
+  }
+
+  function renderGuestOverviewPanel(guest, panel) {
+    if (!guest || !panel) return null;
+
+    const todayText = formatDate(new Date());
+    const activeBookings = getGuestActiveBookings(guest);
+    const todayBookings = activeBookings.filter((booking) => booking.date === todayText);
+    const cancelledBookings = getGuestCancelledBookings(guest);
+    const guestMessages = getVisibleGuestMessages(guest.id);
+    const guestNotifications = guest.notifications || [];
+
+    const panelBoxStyle = {
+      ...premiumPanelStyle,
+      marginTop: "14px",
+      textAlign: "left",
+    };
+
+    const importantNoticeStyle = {
+      ...premiumListCardStyle,
+      border: "2px solid #9b1c31",
+      background: "linear-gradient(180deg, #fff5f6 0%, #ffffff 100%)",
+      boxShadow: "0 10px 26px rgba(155,28,49,0.13)",
+    };
+
+    if (panel === "todayGuestBookings") {
+      return (
+        <div style={panelBoxStyle}>
+          <h4 style={{ marginTop: 0 }}>Mai foglalásaim</h4>
+          {todayBookings.length === 0 && <p>Mára nincs aktív foglalásod.</p>}
+          {todayBookings.map((booking) => renderGuestBookingCard(booking))}
+        </div>
+      );
+    }
+
+    if (panel === "guestBookings") {
+      return (
+        <div style={panelBoxStyle}>
+          <h4 style={{ marginTop: 0 }}>Foglalásaim</h4>
+          {activeBookings.length === 0 && <p>Nincs aktív foglalásod.</p>}
+          {activeBookings.map((booking) => renderGuestBookingCard(booking))}
+        </div>
+      );
+    }
+
+    if (panel === "guestMessages") {
+      return (
+        <div style={panelBoxStyle}>
+          <h4 style={{ marginTop: 0 }}>Üzenetek</h4>
+          {guestMessages.length === 0 && <p>Még nincs valódi üzeneted.</p>}
+          {guestMessages.map((message) => (
+            <div key={message.id} style={premiumListCardStyle}>
+              <b>{message.from === "provider" ? `Szolgáltatótól: ${message.fromName}` : `Tőled: ${message.toName} részére`}</b>
+              {message.date && message.time && (
+                <>
+                  <br />
+                  Időpont: {formatDateHu(message.date)} {message.time}
+                </>
+              )}
+              <br />
+              Üzenet: {message.text}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    if (panel === "guestNotifications") {
+      return (
+        <div style={panelBoxStyle}>
+          <h4 style={{ marginTop: 0 }}>Értesítések</h4>
+          {guestNotifications.length === 0 && <p>Nincs új értesítésed.</p>}
+          {guestNotifications.map((notification) => {
+            const important = ["cancel", "provider_cancel"].includes(notification.type);
+            return (
+              <div key={notification.id} style={important ? importantNoticeStyle : premiumListCardStyle}>
+                {important && <b>Fontos lemondási értesítés</b>}
+                {important && <br />}
+                <b>{notification.text}</b>
+                {notification.message && (
+                  <>
+                    <br />
+                    Üzenet: {notification.message}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    if (panel === "guestCancelledBookings") {
+      return (
+        <div style={panelBoxStyle}>
+          <h4 style={{ marginTop: 0 }}>Lemondott időpontok</h4>
+          {cancelledBookings.length === 0 && <p>Nincs lemondott időpont.</p>}
+          {cancelledBookings.map((booking) => (
+            <div key={booking.id} style={premiumListCardStyle}>
+              <b>{booking.providerName}</b>
+              <br />
+              Lemondott időpont: {formatDateHu(booking.date)} — {booking.day || ""} — {booking.time}
+              <br />
+              {booking.cancelledByGuest ? "Te mondtad le ezt az időpontot." : "A szolgáltató mondta le ezt az időpontot."}
+              {booking.providerCancelMessage && (
+                <>
+                  <br />
+                  Üzenet: {booking.providerCancelMessage}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    return null;
+  }
+
+  function renderGuestStats(guest) {
+    const stats = getGuestStats(guest);
+    const statCards = [
+      { key: "todayGuestBookings", label: "Mai foglalásaim", value: stats.todayBookings },
+      { key: "guestBookings", label: "Foglalásaim", value: stats.activeBookings },
+      { key: "guestMessages", label: "Üzenetek", value: stats.guestMessages },
+      { key: "guestNotifications", label: "Értesítések", value: stats.guestNotifications },
+      { key: "guestCancelledBookings", label: "Lemondott időpontok", value: stats.cancelledBookings },
+    ];
+
+    return (
+      <div style={{ border: "1px solid rgba(127,90,131,0.36)", borderRadius: "22px", padding: "14px", marginTop: "16px", marginBottom: "16px", background: "linear-gradient(180deg, rgba(251,247,252,0.96) 0%, rgba(255,255,255,0.94) 100%)", boxShadow: "0 12px 30px rgba(36,59,85,0.10)" }}>
+        <h3 style={{ marginTop: 0, color: "#5b4164" }}>Áttekintés</h3>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "12px" }}>
+          {statCards.map((card) => {
+            const active = guestOverviewPanel === card.key;
+
+            return (
+              <div
+                key={card.key}
+                style={{
+                  border: active ? "2px solid #7f5a83" : "1px solid rgba(127,90,131,0.24)",
+                  borderRadius: "18px",
+                  background: active ? "linear-gradient(180deg, #fbf2ff 0%, #ffffff 100%)" : "rgba(255,255,255,0.88)",
+                  boxShadow: active ? "0 12px 28px rgba(127,90,131,0.14)" : "0 8px 18px rgba(36,59,85,0.07)",
+                  overflow: "hidden",
+                }}
+              >
+                <button
+                  onClick={() => setGuestOverviewPanel(active ? "" : card.key)}
+                  style={{
+                    width: "100%",
+                    border: "none",
+                    padding: "13px 14px",
+                    background: "transparent",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: "12px",
+                  }}
+                >
+                  <span>
+                    <span style={{ display: "block", fontSize: "13px", color: "#555", fontWeight: "700" }}>{card.label}</span>
+                    <span style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "#7f5a83", lineHeight: 1.1 }}>{card.value}</span>
+                  </span>
+                  <span style={{ color: active ? "#7f5a83" : "#777", fontSize: "18px", fontWeight: "800" }}>
+                    {active ? "−" : "+"}
+                  </span>
+                </button>
+
+                {active && (
+                  <div style={{ padding: "0 12px 12px" }}>
+                    {renderGuestOverviewPanel(guest, card.key)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   function getRegisteredGuestsForProvider(providerId) {
     if (!providerId) return [];
 
@@ -3928,7 +4267,7 @@ function renderProviderOverviewPanel(provider, panel) {
   }
 
   async function cancelBookingByGuest(booking) {
-    if (!confirm("Biztosan lemondod ezt az időpontot?")) return;
+    if (!confirm(`Biztosan lemondod ezt az időpontot?\n\n${booking.providerName || "Szolgáltató"} - ${formatDateHu(booking.date)} ${booking.time}`)) return;
 
     const providerForSupabase = providers.find((provider) => idsEqual(provider.id, booking.providerId));
     const slotForSupabase = providerForSupabase && Array.isArray(providerForSupabase.slots)
@@ -3988,7 +4327,24 @@ function renderProviderOverviewPanel(provider, panel) {
       createdAt: new Date().toISOString(),
     };
 
+    const guestCancelNotification = {
+      id: Date.now() + 1,
+      text: `Lemondtad ezt az időpontot: ${booking.providerName || "Szolgáltató"} - ${formatDateHu(booking.date)} ${booking.time}`,
+      message: "Vendég által lemondva.",
+      type: "cancel",
+    };
+
+    const updatedGuestsAfterCancel = guests.map((guest) =>
+      idsEqual(guest.id, booking.guestId)
+        ? { ...guest, notifications: [guestCancelNotification, ...(guest.notifications || [])] }
+        : guest
+    );
+
     setProviders(updatedProviders);
+    setGuests(updatedGuestsAfterCancel);
+    if (activeGuest && idsEqual(activeGuest.id, booking.guestId)) {
+      setActiveGuest({ ...activeGuest, notifications: [guestCancelNotification, ...(activeGuest.notifications || [])] });
+    }
     setGuestBookings(updatedBookings);
     setMessages([cancelMessage, ...messages]);
 
@@ -7346,221 +7702,8 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 </>
               )}
 
-              <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowGuestBookings(!showGuestBookings)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showGuestBookings ? `Saját foglalások elrejtése (${activeGuestBookings.length})` : `Saját foglalásaim megnyitása (${activeGuestBookings.length})`}
-                </button>
+              {renderGuestStats(activeGuest)}
 
-                {showGuestBookings && (
-                  <>
-                    <h3>Saját foglalásaim</h3>
-
-                    {activeGuestBookings.length === 0 && <p>Nincs aktív foglalásod.</p>}
-
-                    {activeGuestBookings.map((booking) => (
-                      <div key={booking.id} style={premiumListCardStyle}>
-                        <b>{booking.providerName}</b>
-                        <br />
-                        {booking.date} — {booking.day} — {booking.time}
-                        {booking.service && (
-                          <>
-                            <br />
-                            Szolgáltatás: {booking.service}
-                          </>
-                        )}
-                        {booking.note && (
-                          <>
-                            <br />
-                            Megjegyzés: {booking.note}
-                          </>
-                        )}
-                        {booking.changed && (
-                          <>
-                            <br />
-                            Módosítva. Régi időpont: {booking.oldDate} {booking.oldTime}
-                          </>
-                        )}
-
-                        <br /><br />
-
-                        <input
-                          placeholder="Üzenet a szolgáltatónak"
-                          value={guestMessageTexts[booking.id] || ""}
-                          onChange={(e) =>
-                            setGuestMessageTexts({
-                              ...guestMessageTexts,
-                              [booking.id]: e.target.value,
-                            })
-                          }
-                          style={{ ...premiumInlineInputStyle, width: "100%" }}
-                        />
-
-                        <br /><br />
-
-                        <div style={premiumActionButtonRowStyle}>
-                          <button
-                            onClick={() => sendGuestMessageToProvider(booking)}
-                            style={{ ...guestSmallButtonStyle, ...premiumFullWidthMobileButtonStyle }}
-                          >
-                            Üzenet küldése a szolgáltatónak
-                          </button>
-                        </div>
-
-                        <div style={premiumActionButtonRowStyle}>
-                          <button
-                            onClick={() => startChangeBooking(booking)}
-                            style={{ ...guestSmallButtonStyle, ...premiumFullWidthMobileButtonStyle }}
-                          >
-                            Időpont módosítása
-                          </button>
-                          <button
-                            onClick={() => cancelBookingByGuest(booking)}
-                            style={{ ...dangerButtonStyle, ...premiumFullWidthMobileButtonStyle }}
-                          >
-                            Időpont lemondása
-                          </button>
-                        </div>
-
-                        {changeBookingId === booking.id && changeProvider && (
-                          <div style={{ ...premiumPanelStyle, marginTop: "12px" }}>
-                            <h4>Új időpont választása</h4>
-
-                            <h4>Válassz új napot</h4>
-                            {renderCalendar(changeProvider, changeCalendarDate, (date) => {
-                              setChangeCalendarDate(date);
-                              setChangeSlot(null);
-                            })}
-
-                            {changeCalendarDate && (
-                              <>
-                                <h4>Szabad időpontok ezen a napon: {formatDateHu(changeCalendarDate)}</h4>
-
-                                {getAvailableSlotsForDate(changeProvider, changeCalendarDate).map((slot) => (
-                                  <button
-                                    key={slot.id}
-                                    onClick={() => setChangeSlot(slot)}
-                                    style={{
-                                      ...guestSmallButtonStyle,
-                                      display: "block",
-                                      margin: "8px auto",
-                                      opacity: changeSlot?.id === slot.id ? 1 : 0.82,
-                                      transform: changeSlot?.id === slot.id ? "scale(1.03)" : "none",
-                                    }}
-                                  >
-                                    {slot.time}
-                                  </button>
-                                ))}
-                              </>
-                            )}
-
-                            <p>Új kiválasztott időpont: {changeSlot ? `${formatDateHu(changeSlot.date)} ${changeSlot.time}` : "-"}</p>
-
-                            <button onClick={() => confirmChangeBooking(booking)} style={guestSmallButtonStyle}>Módosítás mentése</button>
-                            <button onClick={cancelChangeBooking} style={{ ...premiumNeutralButtonStyle, marginLeft: "10px" }}>Mégse</button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowGuestCancelledBookings(!showGuestCancelledBookings)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showGuestCancelledBookings
-                    ? `Lemondott időpontok elrejtése (${cancelledGuestBookings.length})`
-                    : `Lemondott időpontok megnyitása (${cancelledGuestBookings.length})`}
-                </button>
-
-                {showGuestCancelledBookings && (
-                  <>
-                    <h3>Szolgáltató által lemondott időpontok</h3>
-
-                    {cancelledGuestBookings.length === 0 && <p>Nincs lemondott időpont.</p>}
-
-                    {cancelledGuestBookings.map((booking) => (
-                      <div key={booking.id} style={premiumListCardStyle}>
-                        <b>{booking.providerName}</b>
-                        <br />
-                        Lemondott időpont: {booking.date} — {booking.day} — {booking.time}
-                        {booking.providerCancelMessage && (
-                          <>
-                            <br />
-                            Üzenet: {booking.providerCancelMessage}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowGuestNotifications(!showGuestNotifications)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showGuestNotifications
-                    ? `Értesítések elrejtése (${(activeGuest.notifications || []).length})`
-                    : `Értesítések megnyitása (${(activeGuest.notifications || []).length})`}
-                </button>
-
-                {showGuestNotifications && (
-                  <>
-                    <h3>Értesítéseim</h3>
-                    {(activeGuest.notifications || []).length === 0 && <p>Nincs új értesítésed.</p>}
-
-                    {(activeGuest.notifications || []).map((notification) => (
-                      <div key={notification.id} style={premiumListCardStyle}>
-                        <b>{notification.text}</b>
-                        {notification.message && (
-                          <>
-                            <br />
-                            Üzenet: {notification.message}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowGuestMessages(!showGuestMessages)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showGuestMessages
-                    ? `Üzenetek elrejtése (${getMessagesForGuest(activeGuest.id).length})`
-                    : `Üzenetek megnyitása (${getMessagesForGuest(activeGuest.id).length})`}
-                </button>
-
-                {showGuestMessages && (
-                  <>
-                    <h3>Üzeneteim</h3>
-
-                    {getMessagesForGuest(activeGuest.id).length === 0 && <p>Még nincs üzeneted.</p>}
-
-                    {getMessagesForGuest(activeGuest.id).map((message) => (
-                      <div key={message.id} style={premiumListCardStyle}>
-                        <b>{message.from === "provider" ? `Szolgáltatótól: ${message.fromName}` : `Tőled: ${message.toName} részére`}</b>
-                        <br />
-                        Időpont: {message.date} {message.time}
-                        <br />
-                        {message.type === "cancel" && <b>Lemondási üzenet</b>}
-                        <br />
-                        Üzenet: {message.text}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
 
 
               <br />
