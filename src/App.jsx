@@ -58,6 +58,7 @@ function App() {
   const [selectedProviderGuestId, setSelectedProviderGuestId] = useState(null);
   const [editableGuestPhone, setEditableGuestPhone] = useState("");
   const [showProviderNotifications, setShowProviderNotifications] = useState(false);
+  const [hiddenProviderNotificationKeys, setHiddenProviderNotificationKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenProviderNotificationKeys")) || []);
   const [showProviderGuestCodeEdit, setShowProviderGuestCodeEdit] = useState(false);
   const [showProviderMessages, setShowProviderMessages] = useState(false);
   const [showProviderServices, setShowProviderServices] = useState(false);
@@ -96,6 +97,7 @@ function App() {
   useEffect(() => localStorage.setItem("guests", JSON.stringify(guests)), [guests]);
   useEffect(() => localStorage.setItem("guestBookings", JSON.stringify(guestBookings)), [guestBookings]);
   useEffect(() => localStorage.setItem("messages", JSON.stringify(messages)), [messages]);
+  useEffect(() => localStorage.setItem("hiddenProviderNotificationKeys", JSON.stringify(hiddenProviderNotificationKeys)), [hiddenProviderNotificationKeys]);
 
 
   useEffect(() => {
@@ -162,6 +164,58 @@ function App() {
 
   function idsEqual(firstValue, secondValue) {
     return normalizeId(firstValue) !== "" && normalizeId(firstValue) === normalizeId(secondValue);
+  }
+
+  function getProviderNotificationKey(providerId, notification) {
+    return `${normalizeId(providerId)}|${normalizeId(notification?.id)}|${String(notification?.text || "").trim()}`;
+  }
+
+  function getVisibleProviderNotifications(provider) {
+    if (!provider) return [];
+
+    return (provider.notifications || []).filter(
+      (notification) => !hiddenProviderNotificationKeys.includes(getProviderNotificationKey(provider.id, notification))
+    );
+  }
+
+  function normalizePhoneForCall(phone) {
+    const cleaned = String(phone || "").trim().replace(/[^+0-9]/g, "");
+
+    if (!cleaned) return "";
+
+    if (cleaned.startsWith("+")) return cleaned;
+    if (cleaned.startsWith("00")) return `+${cleaned.slice(2)}`;
+    return cleaned;
+  }
+
+  function renderPhoneCallLink(phone) {
+    const callPhone = normalizePhoneForCall(phone);
+
+    if (!callPhone) return null;
+
+    return (
+      <a
+        href={`tel:${callPhone}`}
+        title="Telefonhívás indítása"
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          width: "28px",
+          height: "28px",
+          marginLeft: "8px",
+          borderRadius: "999px",
+          textDecoration: "none",
+          background: "linear-gradient(135deg, #18324f, #0c1728)",
+          color: "white",
+          fontWeight: "800",
+          boxShadow: "0 8px 20px rgba(24, 50, 79, 0.22)",
+          verticalAlign: "middle",
+        }}
+      >
+        ☎
+      </a>
+    );
   }
 
   function chunkArray(array, size) {
@@ -964,12 +1018,28 @@ function App() {
         createdAt: row.letrehozva || "",
       };
 
+      const notificationDateText = slot?.date && slot?.time ? `${slot.date} ${slot.time}` : "";
+      const messageType = row.tipus || "message";
+      const providerNotificationText =
+        messageType === "change"
+          ? `${guest?.name || "Vendég"} módosította az időpontját${notificationDateText ? `: ${notificationDateText}` : ""}`
+          : messageType === "cancel"
+            ? `${guest?.name || "Vendég"} lemondta az időpontját${notificationDateText ? `: ${notificationDateText}` : ""}`
+            : `${message.fromName} üzenetet küldött${notificationDateText ? `: ${notificationDateText}` : ""}`;
+      const guestNotificationText =
+        messageType === "provider_cancel"
+          ? `${provider?.name || "Szolgáltató"} törölte az időpontodat${notificationDateText ? `: ${notificationDateText}` : ""}`
+          : messageType === "change"
+            ? `Az időpont módosítva lett${notificationDateText ? `: ${notificationDateText}` : ""}`
+            : `${message.fromName} üzenetet küldött${notificationDateText ? `: ${notificationDateText}` : ""}`;
+
       if (provider) {
         provider.notifications = [
           {
             id: row.id,
-            text: `${message.fromName} üzenetet küldött: ${slot?.date || ""} ${slot?.time || ""}`,
+            text: providerNotificationText,
             note: text,
+            type: messageType,
           },
           ...(provider.notifications || []),
         ];
@@ -979,8 +1049,9 @@ function App() {
         guest.notifications = [
           {
             id: row.id,
-            text: `${message.fromName} üzenetet küldött: ${slot?.date || ""} ${slot?.time || ""}`,
+            text: guestNotificationText,
             message: text,
+            type: messageType,
           },
           ...(guest.notifications || []),
         ];
@@ -995,7 +1066,7 @@ function App() {
       breaks: Array.isArray(provider.breaks) ? provider.breaks : [],
       blockedEmails: [...new Set(provider.blockedEmails || [])],
       slots: (provider.slots || []).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)),
-      notifications: provider.notifications || [],
+      notifications: getVisibleProviderNotifications(provider),
     }));
 
     const loadedGuests = Array.from(guestMap.values()).map((guest) => ({
@@ -2887,7 +2958,36 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     );
   }
 
-  function renderProviderOverviewPanel(provider, panel) {
+    function clearProviderNotifications() {
+    if (!activeProvider) return;
+
+    const visibleNotifications = getVisibleProviderNotifications(activeProvider);
+
+    if (visibleNotifications.length === 0) {
+      alert("Nincs törölhető értesítés.");
+      return;
+    }
+
+    if (!confirm("Biztosan törlöd az összes látható értesítést ennél a szolgáltatónál?")) return;
+
+    const keysToHide = visibleNotifications.map((notification) =>
+      getProviderNotificationKey(activeProvider.id, notification)
+    );
+
+    setHiddenProviderNotificationKeys((currentKeys) => [...new Set([...currentKeys, ...keysToHide])]);
+
+    const updatedProviders = providers.map((provider) =>
+      idsEqual(provider.id, activeProvider.id)
+        ? { ...provider, notifications: [] }
+        : provider
+    );
+
+    setProviders(updatedProviders);
+    setActiveProvider({ ...activeProvider, notifications: [] });
+    alert("Értesítések törölve.");
+  }
+
+function renderProviderOverviewPanel(provider, panel) {
     if (!provider || !panel) return null;
 
     const todayText = formatDate(new Date());
@@ -2926,6 +3026,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
                 <>
                   <br />
                   Telefon: {booking.guestPhone}
+                              {renderPhoneCallLink(booking.guestPhone)}
                 </>
               )}
               {booking.service && (
@@ -3604,8 +3705,27 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
         : b
     );
 
+    const changeMessage = {
+      id: Date.now(),
+      providerId: booking.providerId,
+      providerName: booking.providerName,
+      guestId: booking.guestId,
+      guestName: booking.guestName || activeGuest.name,
+      guestEmail: booking.guestEmail || activeGuest.email,
+      slotId: changeSlot.id,
+      date: changeSlot.date,
+      time: changeSlot.time,
+      from: "guest",
+      fromName: activeGuest.name || "Vendég",
+      toName: booking.providerName || changeProvider.name || "Szolgáltató",
+      text: `A vendég módosította az időpontot. Régi időpont: ${oldText}. Új időpont: ${newText}.`,
+      type: "change",
+      createdAt: new Date().toISOString(),
+    };
+
     setProviders(updatedProviders);
     setGuestBookings(updatedBookings);
+    setMessages([changeMessage, ...messages]);
     refreshProviderViews(updatedProviders, booking.providerId);
 
     const oldSlotForSupabase = changeProvider.slots.find((slot) => slot.id === booking.slotId) || {
@@ -3620,6 +3740,12 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       oldSlotForSupabase,
       changeSlot
     );
+
+    const supabaseMessageResult = await saveMessageToSupabase(changeMessage, {
+      provider: changeProvider,
+      guest: activeGuest,
+      slot: changeSlot,
+    });
 
     const changeEmailResult = await sendBookingChangedEmails({
       booking,
@@ -3638,8 +3764,10 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     setChangeSlot(null);
     setChangeCalendarDate("");
 
-    if (supabaseChangeResult.ok) {
-      alert(`Időpont módosítva és Supabase-ben is frissítve.${emailSuffix}`);
+    if (supabaseChangeResult.ok && supabaseMessageResult.ok) {
+      alert(`Időpont módosítva, Supabase-ben frissítve, és a szolgáltató módosításként kapott értesítést.${emailSuffix}`);
+    } else if (supabaseChangeResult.ok) {
+      alert(`Időpont módosítva és Supabase-ben frissítve. Figyelem: a módosítási értesítést nem sikerült Supabase-be menteni.${emailSuffix}`);
     } else {
       alert(`Időpont módosítva helyben. Figyelem: Supabase-ben nem sikerült teljesen frissíteni.${emailSuffix}`);
     }
@@ -6281,6 +6409,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       <>
                         <br />
                         Telefon: {booking.guestPhone}
+                              {renderPhoneCallLink(booking.guestPhone)}
                       </>
                     )}
                     {booking.note && (
@@ -6445,18 +6574,27 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   style={premiumNeutralButtonStyle}
                 >
                   {showProviderNotifications
-                    ? `Értesítések elrejtése (${(activeProvider.notifications || []).length})`
-                    : `Értesítések megnyitása (${(activeProvider.notifications || []).length})`}
+                    ? `Értesítések elrejtése (${getVisibleProviderNotifications(activeProvider).length})`
+                    : `Értesítések megnyitása (${getVisibleProviderNotifications(activeProvider).length})`}
                 </button>
 
                 {showProviderNotifications && (
                   <>
                     <h3>Értesítések</h3>
 
-                    {(activeProvider.notifications || []).length === 0 && <p>Még nincs értesítés.</p>}
+                    {getVisibleProviderNotifications(activeProvider).length === 0 && <p>Még nincs értesítés.</p>}
 
-                    {(activeProvider.notifications || []).map((n) => (
-                      <div key={n.id} style={premiumListCardStyle}>
+                    {getVisibleProviderNotifications(activeProvider).length > 0 && (
+                      <button
+                        onClick={clearProviderNotifications}
+                        style={{ ...dangerButtonStyle, marginBottom: "12px" }}
+                      >
+                        Értesítések törlése
+                      </button>
+                    )}
+
+                    {getVisibleProviderNotifications(activeProvider).map((n) => (
+                      <div key={getProviderNotificationKey(activeProvider.id, n)} style={premiumListCardStyle}>
                         <b>{n.text}</b>
                         {n.service && (
                           <>
@@ -6658,6 +6796,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                             <>
                               <br />
                               Telefon: {slot.guestPhone}
+                              {renderPhoneCallLink(slot.guestPhone)}
                             </>
                           )}
                           {slot.service && (
