@@ -2691,20 +2691,14 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     const guestMessages = getMessagesForProvider(provider.id).filter((message) => message.from === "guest");
 
     const panelBoxStyle = {
-      border: "1px solid #d6eac8",
-      borderRadius: "10px",
-      padding: "12px",
+      ...premiumPanelStyle,
       marginTop: "14px",
-      backgroundColor: "white",
       textAlign: "left",
     };
 
     const smallCardStyle = {
-      border: "1px solid #ddd",
-      borderRadius: "8px",
-      padding: "8px",
+      ...premiumListCardStyle,
       margin: "8px 0",
-      backgroundColor: "#fafafa",
     };
 
     function renderBookingList(title, bookings) {
@@ -2807,7 +2801,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
                   </>
                 )}
                 <br />
-                <button onClick={() => unblockGuestEmail(email)} style={{ marginTop: "8px" }}>
+                <button onClick={() => unblockGuestEmail(email)} style={{ ...providerSmallButtonStyle, marginTop: "8px" }}>
                   Tiltás feloldása
                 </button>
               </div>
@@ -5713,6 +5707,26 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     background: "rgba(255,255,255,0.86)",
     boxShadow: "0 6px 18px rgba(36, 59, 85, 0.06)",
     textAlign: "left",
+    boxSizing: "border-box",
+    maxWidth: "100%",
+    overflow: "hidden",
+  };
+
+  const premiumActionButtonRowStyle = {
+    display: "flex",
+    flexWrap: "wrap",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: "10px",
+    marginTop: "10px",
+    width: "100%",
+    boxSizing: "border-box",
+  };
+
+  const premiumFullWidthMobileButtonStyle = {
+    minWidth: "min(100%, 220px)",
+    maxWidth: "100%",
+    textAlign: "center",
   };
 
   const premiumHeaderTextStyle = {
@@ -5999,6 +6013,36 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
               {renderProviderStats(activeProvider)}
 
+              <div style={premiumPanelStyle}>
+                <h3 style={{ marginTop: 0 }}>Mai foglalások</h3>
+                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).length === 0 && (
+                  <p style={premiumHintStyle}>Ma még nincs foglalt időpont.</p>
+                )}
+                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).map((booking) => (
+                  <div key={booking.id} style={premiumListCardStyle}>
+                    <b>{booking.time}</b> — {booking.guestName || "Vendég"}
+                    {booking.service && (
+                      <>
+                        <br />
+                        Szolgáltatás: {booking.service}
+                      </>
+                    )}
+                    {booking.guestPhone && (
+                      <>
+                        <br />
+                        Telefon: {booking.guestPhone}
+                      </>
+                    )}
+                    {booking.note && (
+                      <>
+                        <br />
+                        Megjegyzés: {booking.note}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
+
               <button onClick={() => setShowProviderSettings(!showProviderSettings)} style={{ ...providerSmallButtonStyle, margin: "12px 0" }}>
                 {showProviderSettings ? "Beállítások bezárása" : "Beállítások"}
               </button>
@@ -6087,7 +6131,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <div style={premiumSettingsPanelStyle}>
+              <div style={premiumPanelStyle}>
                 <button
                   onClick={() => setShowProviderMessages(!showProviderMessages)}
                   style={premiumNeutralButtonStyle}
@@ -6118,7 +6162,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <div style={premiumSettingsPanelStyle}>
+              <div style={premiumPanelStyle}>
                 <button
                   onClick={() => setShowProviderNotifications(!showProviderNotifications)}
                   style={premiumNeutralButtonStyle}
@@ -6542,10 +6586,10 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 </div>
               )}
 
-              <div style={{ margin: "12px 0", display: showGuestSettings ? "block" : "none" }}>
+              <div style={{ ...premiumActionButtonRowStyle, display: showGuestSettings ? "flex" : "none" }}>
                 <button
                   onClick={() => setShowGuestPhoneEdit(!showGuestPhoneEdit)}
-                  style={{ ...premiumNeutralButtonStyle, marginRight: "8px" }}
+                  style={premiumNeutralButtonStyle}
                 >
                   {showGuestPhoneEdit ? "Telefonszám módosítás bezárása" : "Telefonszám módosítása"}
                 </button>
@@ -6774,16 +6818,29 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
                         <br /><br />
 
-                        <button onClick={() => sendGuestMessageToProvider(booking)} style={guestSmallButtonStyle}>
-                          Üzenet küldése a szolgáltatónak
-                        </button>
+                        <div style={premiumActionButtonRowStyle}>
+                          <button
+                            onClick={() => sendGuestMessageToProvider(booking)}
+                            style={{ ...guestSmallButtonStyle, ...premiumFullWidthMobileButtonStyle }}
+                          >
+                            Üzenet küldése a szolgáltatónak
+                          </button>
+                        </div>
 
-                        <br /><br />
-
-                        <button onClick={() => startChangeBooking(booking)} style={guestSmallButtonStyle}>Időpont módosítása</button>
-                        <button onClick={() => cancelBookingByGuest(booking)} style={{ ...dangerButtonStyle, marginLeft: "10px" }}>
-                          Időpont lemondása
-                        </button>
+                        <div style={premiumActionButtonRowStyle}>
+                          <button
+                            onClick={() => startChangeBooking(booking)}
+                            style={{ ...guestSmallButtonStyle, ...premiumFullWidthMobileButtonStyle }}
+                          >
+                            Időpont módosítása
+                          </button>
+                          <button
+                            onClick={() => cancelBookingByGuest(booking)}
+                            style={{ ...dangerButtonStyle, ...premiumFullWidthMobileButtonStyle }}
+                          >
+                            Időpont lemondása
+                          </button>
+                        </div>
 
                         {changeBookingId === booking.id && changeProvider && (
                           <div style={{ ...premiumPanelStyle, marginTop: "12px" }}>
