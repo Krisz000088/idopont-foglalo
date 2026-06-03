@@ -156,6 +156,14 @@ function App() {
     return String(email || "").trim().toLowerCase();
   }
 
+  function normalizeId(value) {
+    return String(value ?? "").trim();
+  }
+
+  function idsEqual(firstValue, secondValue) {
+    return normalizeId(firstValue) !== "" && normalizeId(firstValue) === normalizeId(secondValue);
+  }
+
   function chunkArray(array, size) {
     const chunks = [];
 
@@ -408,7 +416,7 @@ function App() {
     if (!provider || !date) return [];
 
     return guestBookings.filter(
-      (booking) => booking.active && booking.providerId === provider.id && booking.date === date
+      (booking) => booking.active && idsEqual(booking.providerId, provider.id) && booking.date === date
     );
   }
 
@@ -738,7 +746,7 @@ function App() {
 
     if (firstError) {
       console.error("Supabase betöltési hiba:", firstError);
-      return;
+      return null;
     }
 
     const providerRows = providersResult.data || [];
@@ -861,7 +869,7 @@ function App() {
         slot.note = row.megjegyzes || "";
       }
 
-      if (guest && provider && !guest.providerIds.includes(provider.id)) {
+      if (guest && provider && !guest.providerIds.some((providerId) => idsEqual(providerId, provider.id))) {
         guest.providerIds = [...guest.providerIds, provider.id];
       }
 
@@ -978,13 +986,20 @@ function App() {
 
     setActiveProvider((currentActiveProvider) => {
       if (!currentActiveProvider) return currentActiveProvider;
-      return loadedProviders.find((provider) => provider.id === currentActiveProvider.id) || currentActiveProvider;
+      return loadedProviders.find((provider) => idsEqual(provider.id, currentActiveProvider.id)) || currentActiveProvider;
     });
 
     setActiveGuest((currentActiveGuest) => {
       if (!currentActiveGuest) return currentActiveGuest;
-      return loadedGuests.find((guest) => guest.id === currentActiveGuest.id) || currentActiveGuest;
+      return loadedGuests.find((guest) => idsEqual(guest.id, currentActiveGuest.id)) || currentActiveGuest;
     });
+
+    return {
+      providers: loadedProviders,
+      guests: loadedGuests,
+      guestBookings: loadedBookings,
+      messages: sortedMessages,
+    };
   }
 
   function getHungarianDayName(date) {
@@ -1191,7 +1206,7 @@ function App() {
     return guestBookings.some(
       (booking) =>
         booking.active &&
-        booking.providerId === providerId &&
+        idsEqual(booking.providerId, providerId) &&
         booking.date === date &&
         (booking.guestEmail || "").toLowerCase() === guestEmail.toLowerCase()
     );
@@ -1322,17 +1337,17 @@ function App() {
   }
 
   function refreshProviderViews(updatedProviders, providerId) {
-    const freshProvider = updatedProviders.find((p) => p.id === providerId);
+    const freshProvider = updatedProviders.find((p) => idsEqual(p.id, providerId));
 
-    if (activeProvider && activeProvider.id === providerId) {
+    if (activeProvider && idsEqual(activeProvider.id, providerId)) {
       setActiveProvider(freshProvider);
     }
 
-    if (selectedProvider && selectedProvider.id === providerId) {
+    if (selectedProvider && idsEqual(selectedProvider.id, providerId)) {
       setSelectedProvider(freshProvider);
     }
 
-    if (changeProvider && changeProvider.id === providerId) {
+    if (changeProvider && idsEqual(changeProvider.id, providerId)) {
       setChangeProvider(freshProvider);
     }
   }
@@ -1591,7 +1606,11 @@ function App() {
       return;
     }
 
-    let found = providers.find((p) => (p.email || "").toLowerCase() === loginEmailLower);
+    const freshData = await loadSupabaseData();
+    const providerSource = freshData?.providers || providers;
+    const bookingSource = freshData?.guestBookings || guestBookings;
+
+    let found = providerSource.find((p) => (p.email || "").toLowerCase() === loginEmailLower);
 
     if (!found) {
       const { data, error } = await supabase
@@ -1918,13 +1937,13 @@ function App() {
   async function saveMessageToSupabase(message, options = {}) {
     const provider =
       options.provider ||
-      providers.find((p) => p.id === message.providerId) ||
+      providers.find((p) => idsEqual(p.id, message.providerId)) ||
       selectedProvider ||
       activeProvider;
 
     const guest =
       options.guest ||
-      guests.find((g) => g.id === message.guestId) ||
+      guests.find((g) => idsEqual(g.id, message.guestId)) ||
       guests.find((g) => (g.email || "").toLowerCase() === (message.guestEmail || "").toLowerCase()) ||
       activeGuest;
 
@@ -2688,7 +2707,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     const todayText = formatDate(new Date());
     const providerBookings = guestBookings.filter(
-      (booking) => booking.active && booking.providerId === provider.id
+      (booking) => booking.active && idsEqual(booking.providerId, provider.id)
     );
     const providerSlots = Array.isArray(provider.slots) ? provider.slots : [];
     const providerMessages = getMessagesForProvider(provider.id);
@@ -2783,7 +2802,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     const todayText = formatDate(new Date());
     const providerBookings = guestBookings
-      .filter((booking) => booking.active && booking.providerId === provider.id)
+      .filter((booking) => booking.active && idsEqual(booking.providerId, provider.id))
       .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
     const providerSlots = Array.isArray(provider.slots) ? provider.slots : [];
     const guestMessages = getMessagesForProvider(provider.id).filter((message) => message.from === "guest");
@@ -2935,7 +2954,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     if (!providerId) return [];
 
     return guests
-      .filter((guest) => Array.isArray(guest.providerIds) && guest.providerIds.includes(providerId))
+      .filter((guest) => Array.isArray(guest.providerIds) && guest.providerIds.some((guestProviderId) => idsEqual(guestProviderId, providerId)))
       .sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu"));
   }
 
@@ -2947,8 +2966,8 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     return guestBookings
       .filter((booking) => {
-        if (!booking || booking.providerId !== providerId || !booking.active) return false;
-        if (booking.guestId && booking.guestId === guest.id) return true;
+        if (!booking || !idsEqual(booking.providerId, providerId) || !booking.active) return false;
+        if (booking.guestId && idsEqual(booking.guestId, guest.id)) return true;
         return guestEmailValue && normalizeEmail(booking.guestEmail) === guestEmailValue;
       })
       .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
@@ -3318,10 +3337,40 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       supabaseBookingMessage = "\n\nFigyelem: a foglalás helyben létrejött, de Supabase mentéshez a szolgáltatónak, vendégnek és időpontnak is szerepelnie kell a Supabase-ben.";
     }
 
-    const freshProvider = updatedProviders.find((p) => p.id === selectedProvider.id);
+    let freshProvider = updatedProviders.find((p) => idsEqual(p.id, selectedProvider.id));
+
+    if (providerDbId && guestDbId && slotDbId && !supabaseBookingMessage.includes("Figyelem")) {
+      const freshData = await loadSupabaseData();
+
+      if (freshData?.providers) {
+        freshProvider =
+          freshData.providers.find((provider) => idsEqual(provider.id, providerDbId)) ||
+          freshData.providers.find((provider) => normalizeEmail(provider.email) === normalizeEmail(selectedProvider.email)) ||
+          freshProvider;
+
+        const freshGuest = freshData.guests?.find((guest) => idsEqual(guest.id, guestDbId)) || activeGuest;
+        const freshBooking =
+          freshData.guestBookings?.find(
+            (item) =>
+              idsEqual(item.providerId, providerDbId) &&
+              idsEqual(item.guestId, guestDbId) &&
+              idsEqual(item.slotId, slotDbId)
+          ) || booking;
+
+        if (freshGuest && activeGuest && idsEqual(freshGuest.id, activeGuest.id)) {
+          setActiveGuest(freshGuest);
+        }
+
+        booking.id = freshBooking.id || booking.id;
+        booking.providerId = freshBooking.providerId || booking.providerId;
+        booking.guestId = freshBooking.guestId || booking.guestId;
+        booking.slotId = freshBooking.slotId || booking.slotId;
+      }
+    }
+
     setSelectedProvider(freshProvider);
 
-    if (activeProvider && activeProvider.id === selectedProvider.id) {
+    if (activeProvider && idsEqual(activeProvider.id, selectedProvider.id)) {
       setActiveProvider(freshProvider);
     }
 
@@ -3343,7 +3392,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
   }
 
   function startChangeBooking(booking) {
-    const provider = providers.find((p) => p.id === booking.providerId);
+    const provider = providers.find((p) => idsEqual(p.id, booking.providerId));
 
     if (!provider) {
       alert("A szolgáltató már nem található.");
@@ -3405,7 +3454,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     const newText = `${changeSlot.date} ${changeSlot.time}`;
 
     const updatedProviders = providers.map((provider) =>
-      provider.id === booking.providerId
+      idsEqual(provider.id, booking.providerId)
         ? {
             ...provider,
             slots: provider.slots.map((slot) => {
@@ -3509,7 +3558,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
   async function cancelBookingByGuest(booking) {
     if (!confirm("Biztosan lemondod ezt az időpontot?")) return;
 
-    const providerForSupabase = providers.find((provider) => provider.id === booking.providerId);
+    const providerForSupabase = providers.find((provider) => idsEqual(provider.id, booking.providerId));
     const slotForSupabase = providerForSupabase && Array.isArray(providerForSupabase.slots)
       ? providerForSupabase.slots.find((slot) => slot.id === booking.slotId)
       : {
@@ -3519,7 +3568,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
         };
 
     const updatedProviders = providers.map((provider) =>
-      provider.id === booking.providerId
+      idsEqual(provider.id, booking.providerId)
         ? {
             ...provider,
             slots: provider.slots.map((slot) =>
@@ -3690,7 +3739,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     const freshProvider = updatedProviders.find((p) => p.id === activeProvider.id);
     setActiveProvider(freshProvider);
 
-    if (selectedProvider && selectedProvider.id === activeProvider.id) {
+    if (selectedProvider && idsEqual(selectedProvider.id, activeProvider.id)) {
       setSelectedProvider(freshProvider);
     }
 
@@ -3955,7 +4004,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
   async function sendGuestMessageToProvider(booking) {
     if (!activeGuest || !booking.providerId) return;
 
-    const provider = providers.find((p) => p.id === booking.providerId);
+    const provider = providers.find((p) => idsEqual(p.id, booking.providerId));
 
     if (isGuestBlockedByProvider(provider, activeGuest.email)) {
       alert("Ez a szolgáltató letiltott téged, ezért nem tudsz neki üzenetet küldeni.");
@@ -3995,7 +4044,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     setMessages([newMessage, ...messages]);
 
     const updatedProviders = providers.map((provider) =>
-      provider.id === booking.providerId
+      idsEqual(provider.id, booking.providerId)
         ? {
             ...provider,
             notifications: [
@@ -4090,7 +4139,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     );
 
     const updatedBookings = guestBookings.map((booking) =>
-      booking.providerId === activeProvider.id &&
+      idsEqual(booking.providerId, activeProvider.id) &&
       booking.active &&
       (booking.guestEmail || "").toLowerCase() === normalizedEmail
         ? {
@@ -4546,10 +4595,10 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     const updatedGuests = guests.map((g) => ({
       ...g,
       providerIds: (g.providerIds || []).filter((id) => id !== providerToDelete.id),
-      notifications: (g.notifications || []).filter((notification) => notification.providerId !== providerToDelete.id),
+      notifications: (g.notifications || []).filter((notification) => !idsEqual(notification.providerId, providerToDelete.id)),
     }));
-    const updatedBookings = guestBookings.filter((b) => b.providerId !== providerToDelete.id);
-    const updatedMessages = messages.filter((message) => message.providerId !== providerToDelete.id);
+    const updatedBookings = guestBookings.filter((b) => !idsEqual(b.providerId, providerToDelete.id));
+    const updatedMessages = messages.filter((message) => !idsEqual(message.providerId, providerToDelete.id));
 
     setProviders(updatedProviders);
     setGuests(updatedGuests);
@@ -5167,7 +5216,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     // Célzott tesztesetek: üzenetváltás mindkét irányba, tiltott vendég és betelt nap
     const sampleBookings = demoBookings
-      .filter((booking) => booking.providerId === fullProvider.id)
+      .filter((booking) => idsEqual(booking.providerId, fullProvider.id))
       .slice(0, 5);
 
     sampleBookings.forEach((booking, index) => {
