@@ -7122,13 +7122,24 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
   };
 
   const premiumTitleStyle = {
-    margin: "26px 0 8px",
-    fontSize: "clamp(38px, 10vw, 64px)",
-    lineHeight: "1.05",
-    fontWeight: "900",
-    letterSpacing: "-1.2px",
-    color: "#243b55",
-    textShadow: "0 10px 30px rgba(36, 59, 85, 0.10)",
+    margin: "26px 0 18px",
+    fontSize: "clamp(38px, 10vw, 66px)",
+    lineHeight: "1.02",
+    fontWeight: "950",
+    letterSpacing: "-1.6px",
+    color: "#1f3b57",
+    textAlign: "center",
+    textShadow: "0 14px 34px rgba(36, 59, 85, 0.14)",
+  };
+
+  const premiumTitleAccentStyle = {
+    display: "inline-block",
+    background: "linear-gradient(135deg, #203a58 0%, #17263c 52%, #875c96 100%)",
+    WebkitBackgroundClip: "text",
+    backgroundClip: "text",
+    color: "transparent",
+    paddingBottom: "6px",
+    borderBottom: "4px solid rgba(135, 92, 150, 0.22)",
   };
 
   const premiumLandingHintStyle = {
@@ -7156,27 +7167,27 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
   return (
     <div style={appShellStyle} translate="no" className="notranslate" lang="hu">
-      <h1 style={premiumTitleStyle}>Időpont Foglaló</h1>
+      <h1 style={premiumTitleStyle}><span style={premiumTitleAccentStyle}>Időpont Foglaló</span></h1>
 
       {!mode && (
         <>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", marginTop: "18px" }}>
-            <button onClick={() => setMode("createProvider")} style={providerHomeButtonStyle}>
-              Szolgáltató regisztráció
-            </button>
-
             <button onClick={() => setMode("providerLogin")} style={providerHomeButtonStyle}>
               Szolgáltató belépés
             </button>
 
-            <div style={{ height: "8px" }} />
-
-            <button onClick={() => setMode("createGuest")} style={guestHomeButtonStyle}>
-              Vendég regisztráció
+            <button onClick={() => setMode("createProvider")} style={providerHomeButtonStyle}>
+              Szolgáltató regisztráció
             </button>
+
+            <div style={{ height: "8px" }} />
 
             <button onClick={() => setMode("guestLogin")} style={guestHomeButtonStyle}>
               Vendég belépés
+            </button>
+
+            <button onClick={() => setMode("createGuest")} style={guestHomeButtonStyle}>
+              Vendég regisztráció
             </button>
 
             <button onClick={() => setMode("forgotLogin")} style={forgotPasswordLinkStyle}>
@@ -7358,213 +7369,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
               {renderProviderStats(activeProvider)}
 
-              <div style={premiumPanelStyle}>
-                <h3 style={{ marginTop: 0 }}>Mai foglalások</h3>
-                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).length === 0 && (
-                  <p style={premiumHintStyle}>Ma még nincs foglalt időpont.</p>
-                )}
-                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).map((booking) => (
-                  <div key={booking.id} style={premiumListCardStyle}>
-                    <b>{booking.time}</b> — {booking.guestName || "Vendég"}
-                    {booking.service && (
-                      <>
-                        <br />
-                        Szolgáltatás: {booking.service}
-                      </>
-                    )}
-                    {booking.guestPhone && (
-                      <>
-                        <br />
-                        Telefon: {booking.guestPhone}
-                              {renderPhoneCallLink(booking.guestPhone)}
-                      </>
-                    )}
-                    {booking.note && (
-                      <>
-                        <br />
-                        Megjegyzés: {booking.note}
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
-
-              <div style={premiumSettingsPanelStyle}>
-                <button
-                  onClick={() => setShowProviderScheduleSettings(!showProviderScheduleSettings)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderScheduleSettings ? "Munkaidő és időpontok elrejtése" : "Munkaidő és időpontok kezelése"}
-                </button>
-
-                {showProviderScheduleSettings && (
-                  <>
-                    <h3>Mely napokon dolgozol?</h3>
-
-                    {days.map((day) => (
-                      <label key={day} style={{ display: "block", margin: "6px" }}>
-                        <input type="checkbox" checked={workDays.includes(day)} onChange={() => toggleWorkDay(day)} />
-                        {" "}{day}
-                      </label>
-                    ))}
-
-                    <p>Munkaidő kezdete:</p>
-                    <input type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} style={premiumInlineInputStyle} />
-
-                    <p>Munkaidő vége:</p>
-                    <input type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} style={premiumInlineInputStyle} />
-
-                    <p>Időpont hossza:</p>
-                    <select value={slotLength} onChange={(e) => setSlotLength(e.target.value)} style={premiumSelectStyle}>
-                      <option value="15">15 perc</option>
-                      <option value="30">30 perc</option>
-                      <option value="45">45 perc</option>
-                      <option value="60">60 perc</option>
-                      <option value="90">90 perc</option>
-                    </select>
-
-                    <p>Hány hétre előre generáljon időpontokat?</p>
-                    <select value={weeksAhead} onChange={(e) => setWeeksAhead(e.target.value)} style={premiumSelectStyle}>
-                      <option value="1">1 hét</option>
-                      <option value="2">2 hét</option>
-                      <option value="4">4 hét</option>
-                      <option value="8">8 hét</option>
-                      <option value="12">12 hét</option>
-                    </select>
-
-                    <h3>Kivétel napok / szabadnapok</h3>
-
-                    <input type="date" value={exceptionDate} onChange={(e) => setExceptionDate(e.target.value)} style={premiumInlineInputStyle} />
-                    <button onClick={addExceptionDate} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Kivétel nap hozzáadása</button>
-
-                    {(activeProvider.exceptionDates || []).length === 0 && <p>Nincs kivétel nap megadva.</p>}
-
-                    {(activeProvider.exceptionDates || []).map((date) => (
-                      <div key={date} style={{ margin: "6px 0" }}>
-                        <b>{date}</b>
-                        <button onClick={() => removeExceptionDate(date)} style={{ ...premiumNeutralButtonStyle, marginLeft: "10px" }}>
-                          Törlés
-                        </button>
-                      </div>
-                    ))}
-
-                    <h3>Napközbeni szünetek <span style={{ fontSize: "14px", fontWeight: "600", color: "#8a7895" }}>(opcionális)</span></h3>
-                    <p style={premiumHintStyle}>
-                      Ezt nem kötelező kitölteni. Ha nem adsz meg szünetet, az időpont-generálás ugyanúgy működik.
-                      Csak akkor használd, ha például ebédidőt vagy rövid napközbeni szünetet szeretnél kihagyni.
-                    </p>
-
-                    <div style={{ ...premiumListCardStyle, border: "1px solid rgba(135, 92, 150, 0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(250,247,253,0.96))" }}>
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center", marginBottom: "12px" }}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBreakStart("09:30");
-                            setBreakEnd("10:00");
-                          }}
-                          style={premiumNeutralButtonStyle}
-                        >
-                          Reggeli szünet 09:30–10:00
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setBreakStart("12:00");
-                            setBreakEnd("13:00");
-                          }}
-                          style={premiumNeutralButtonStyle}
-                        >
-                          Ebédszünet 12:00–13:00
-                        </button>
-                      </div>
-
-                      <select value={breakType} onChange={(e) => setBreakType(e.target.value)} style={premiumSelectStyle}>
-                        <option value="weekly">Ismétlődő heti szünet</option>
-                        <option value="single">Egyszeri szünet</option>
-                      </select>
-
-                      {breakType === "weekly" ? (
-                        <div style={{ marginTop: "12px" }}>
-                          <p style={{ ...premiumHintStyle, marginBottom: "8px" }}>
-                            Pipáld be, mely napokra vonatkozzon a szünet.
-                          </p>
-
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-                            {days.map((day) => {
-                              const selected = (breakSelectedDays || []).includes(day);
-
-                              return (
-                                <button
-                                  key={day}
-                                  type="button"
-                                  onClick={() => toggleBreakSelectedDay(day)}
-                                  style={{
-                                    padding: "9px 12px",
-                                    borderRadius: "999px",
-                                    border: selected ? "1px solid #18324f" : "1px solid rgba(135, 92, 150, 0.25)",
-                                    background: selected
-                                      ? "linear-gradient(135deg, #18324f, #875c96)"
-                                      : "rgba(255,255,255,0.92)",
-                                    color: selected ? "white" : "#62546f",
-                                    fontWeight: "800",
-                                    cursor: "pointer",
-                                    boxShadow: selected ? "0 10px 22px rgba(24, 50, 79, 0.18)" : "0 8px 18px rgba(36,59,85,0.08)",
-                                  }}
-                                >
-                                  {selected ? "✓ " : ""}{day}
-                                </button>
-                              );
-                            })}
-                          </div>
-
-                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "10px" }}>
-                            <button type="button" onClick={selectWorkDaysForBreaks} style={premiumNeutralButtonStyle}>
-                              Munkanapokra állítom
-                            </button>
-                            <button type="button" onClick={() => setBreakSelectedDays(days)} style={premiumNeutralButtonStyle}>
-                              Minden nap
-                            </button>
-                            <button type="button" onClick={() => setBreakSelectedDays([])} style={premiumNeutralButtonStyle}>
-                              Napok törlése
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div style={{ marginTop: "12px" }}>
-                          <p style={{ ...premiumHintStyle, marginBottom: "8px" }}>Egyszeri szünet dátuma:</p>
-                          <input type="date" value={breakDate} onChange={(e) => setBreakDate(e.target.value)} style={premiumInlineInputStyle} />
-                        </div>
-                      )}
-
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center", marginTop: "12px" }}>
-                        <label>
-                          Kezdete<br />
-                          <input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={premiumInlineInputStyle} />
-                        </label>
-                        <label>
-                          Vége<br />
-                          <input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={premiumInlineInputStyle} />
-                        </label>
-                        <button onClick={addProviderBreak} style={providerSmallButtonStyle}>Szünet hozzáadása</button>
-                      </div>
-                    </div>
-
-                    {(activeProvider.breaks || []).length === 0 && <p>Jelenleg nincs napközbeni szünet megadva. Ez teljesen rendben van, így is tudsz időpontot generálni.</p>}
-                    {(activeProvider.breaks || []).map((item) => (
-                      <div key={item.id} style={premiumListCardStyle}>
-                        <b>{item.type === "single" ? "Egyszeri" : "Heti ismétlődő"}</b>
-                        <br />
-                        {item.type === "single" ? formatDateHu(item.date) : item.day} — {item.start}–{item.end}
-                        <br />
-                        <button onClick={() => removeProviderBreak(item.id)} style={{ ...dangerButtonStyle, marginTop: "10px" }}>Törlés</button>
-                      </div>
-                    ))}
-
-                    <br /><br />
-                    <button onClick={generateSlots} style={providerSmallButtonStyle}>Időpontok generálása</button>
-                  </>
-                )}
-              </div>
 
 
               <button onClick={() => setShowProviderSettings(!showProviderSettings)} style={{ ...providerSmallButtonStyle, margin: "12px 0" }}>
@@ -7743,6 +7547,202 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               </div>
 
               <h3 style={premiumSectionTitleStyle}>Időpontok és foglalások</h3>
+
+
+              <div style={{ ...premiumPanelStyle, textAlign: "center", marginBottom: "18px" }}>
+                <h3 style={{ marginTop: 0, color: "#243b55" }}>Munkaidő és időpontok</h3>
+                <p style={premiumHintStyle}>
+                  Itt tudod megadni, mikor dolgozol, generálni az időpontokat, és opcionálisan napközbeni szüneteket beállítani.
+                </p>
+                <button
+                  onClick={() => setShowProviderScheduleSettings(!showProviderScheduleSettings)}
+                  style={providerPrimaryActionStyle}
+                >
+                  {showProviderScheduleSettings ? "Munkaidő és időpontok elrejtése" : "Munkaidő és időpontok kezelése"}
+                </button>
+
+                {showProviderScheduleSettings && (
+                  <div style={{ marginTop: "18px", textAlign: "left" }}>
+
+                    <h3>Mely napokon dolgozol?</h3>
+
+                    {days.map((day) => (
+                      <label key={day} style={{ display: "block", margin: "6px" }}>
+                        <input type="checkbox" checked={workDays.includes(day)} onChange={() => toggleWorkDay(day)} />
+                        {" "}{day}
+                      </label>
+                    ))}
+
+                    <p>Munkaidő kezdete:</p>
+                    <input type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} style={premiumInlineInputStyle} />
+
+                    <p>Munkaidő vége:</p>
+                    <input type="time" value={workEnd} onChange={(e) => setWorkEnd(e.target.value)} style={premiumInlineInputStyle} />
+
+                    <p>Időpont hossza:</p>
+                    <select value={slotLength} onChange={(e) => setSlotLength(e.target.value)} style={premiumSelectStyle}>
+                      <option value="15">15 perc</option>
+                      <option value="30">30 perc</option>
+                      <option value="45">45 perc</option>
+                      <option value="60">60 perc</option>
+                      <option value="90">90 perc</option>
+                    </select>
+
+                    <p>Hány hétre előre generáljon időpontokat?</p>
+                    <select value={weeksAhead} onChange={(e) => setWeeksAhead(e.target.value)} style={premiumSelectStyle}>
+                      <option value="1">1 hét</option>
+                      <option value="2">2 hét</option>
+                      <option value="4">4 hét</option>
+                      <option value="8">8 hét</option>
+                      <option value="12">12 hét</option>
+                    </select>
+
+                    <h3>Kivétel napok / szabadnapok</h3>
+
+                    <input type="date" value={exceptionDate} onChange={(e) => setExceptionDate(e.target.value)} style={premiumInlineInputStyle} />
+                    <button onClick={addExceptionDate} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Kivétel nap hozzáadása</button>
+
+                    {(activeProvider.exceptionDates || []).length === 0 && <p>Nincs kivétel nap megadva.</p>}
+
+                    {(activeProvider.exceptionDates || []).map((date) => (
+                      <div key={date} style={{ margin: "6px 0" }}>
+                        <b>{date}</b>
+                        <button onClick={() => removeExceptionDate(date)} style={{ ...premiumNeutralButtonStyle, marginLeft: "10px" }}>
+                          Törlés
+                        </button>
+                      </div>
+                    ))}
+
+                    <h3>Napközbeni szünetek <span style={{ fontSize: "14px", fontWeight: "600", color: "#8a7895" }}>(opcionális)</span></h3>
+                    <p style={premiumHintStyle}>
+                      Ezt nem kötelező kitölteni. Ha nem adsz meg szünetet, az időpont-generálás ugyanúgy működik.
+                      Csak akkor használd, ha például ebédidőt vagy rövid napközbeni szünetet szeretnél kihagyni.
+                    </p>
+
+                    <div style={{ ...premiumListCardStyle, border: "1px solid rgba(135, 92, 150, 0.22)", background: "linear-gradient(180deg, rgba(255,255,255,0.96), rgba(250,247,253,0.96))" }}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center", marginBottom: "12px" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBreakStart("09:30");
+                            setBreakEnd("10:00");
+                          }}
+                          style={premiumNeutralButtonStyle}
+                        >
+                          Reggeli szünet 09:30–10:00
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBreakStart("12:00");
+                            setBreakEnd("13:00");
+                          }}
+                          style={premiumNeutralButtonStyle}
+                        >
+                          Ebédszünet 12:00–13:00
+                        </button>
+                      </div>
+
+                      <div style={{
+                        padding: "14px",
+                        margin: "0 0 14px 0",
+                        borderRadius: "22px",
+                        border: "1px solid rgba(135, 92, 150, 0.20)",
+                        background: "linear-gradient(135deg, rgba(255,255,255,0.98), rgba(246,240,250,0.98))",
+                        boxShadow: "0 14px 30px rgba(36,59,85,0.08)",
+                      }}>
+                        <p style={{ ...premiumHintStyle, marginTop: 0, marginBottom: "10px" }}>
+                          Itt állítsd be a kiválasztott szünet idejét, majd mentsd el. A gyorsgombok csak előre beírják az időpontot, még nem mentenek automatikusan.
+                        </p>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "flex-end" }}>
+                          <label style={{ fontWeight: "800", color: "#4f435c" }}>
+                            Kezdete<br />
+                            <input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={premiumInlineInputStyle} />
+                          </label>
+                          <label style={{ fontWeight: "800", color: "#4f435c" }}>
+                            Vége<br />
+                            <input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={premiumInlineInputStyle} />
+                          </label>
+                          <button onClick={addProviderBreak} style={providerSmallButtonStyle}>Szünet mentése</button>
+                        </div>
+                      </div>
+
+                      <select value={breakType} onChange={(e) => setBreakType(e.target.value)} style={premiumSelectStyle}>
+                        <option value="weekly">Ismétlődő heti szünet</option>
+                        <option value="single">Egyszeri szünet</option>
+                      </select>
+
+                      {breakType === "weekly" ? (
+                        <div style={{ marginTop: "12px" }}>
+                          <p style={{ ...premiumHintStyle, marginBottom: "8px" }}>
+                            Pipáld be, mely napokra vonatkozzon a szünet.
+                          </p>
+
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
+                            {days.map((day) => {
+                              const selected = (breakSelectedDays || []).includes(day);
+
+                              return (
+                                <button
+                                  key={day}
+                                  type="button"
+                                  onClick={() => toggleBreakSelectedDay(day)}
+                                  style={{
+                                    padding: "9px 12px",
+                                    borderRadius: "999px",
+                                    border: selected ? "1px solid #18324f" : "1px solid rgba(135, 92, 150, 0.25)",
+                                    background: selected
+                                      ? "linear-gradient(135deg, #18324f, #875c96)"
+                                      : "rgba(255,255,255,0.92)",
+                                    color: selected ? "white" : "#62546f",
+                                    fontWeight: "800",
+                                    cursor: "pointer",
+                                    boxShadow: selected ? "0 10px 22px rgba(24, 50, 79, 0.18)" : "0 8px 18px rgba(36,59,85,0.08)",
+                                  }}
+                                >
+                                  {selected ? "✓ " : ""}{day}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginTop: "10px" }}>
+                            <button type="button" onClick={selectWorkDaysForBreaks} style={premiumNeutralButtonStyle}>
+                              Munkanapokra állítom
+                            </button>
+                            <button type="button" onClick={() => setBreakSelectedDays(days)} style={premiumNeutralButtonStyle}>
+                              Minden nap
+                            </button>
+                            <button type="button" onClick={() => setBreakSelectedDays([])} style={premiumNeutralButtonStyle}>
+                              Napok törlése
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: "12px" }}>
+                          <p style={{ ...premiumHintStyle, marginBottom: "8px" }}>Egyszeri szünet dátuma:</p>
+                          <input type="date" value={breakDate} onChange={(e) => setBreakDate(e.target.value)} style={premiumInlineInputStyle} />
+                        </div>
+                      )}
+
+                    </div>
+
+                    {(activeProvider.breaks || []).length === 0 && <p>Jelenleg nincs napközbeni szünet megadva. Ez teljesen rendben van, így is tudsz időpontot generálni.</p>}
+                    {(activeProvider.breaks || []).map((item) => (
+                      <div key={item.id} style={premiumListCardStyle}>
+                        <b>{item.type === "single" ? "Egyszeri" : "Heti ismétlődő"}</b>
+                        <br />
+                        {item.type === "single" ? formatDateHu(item.date) : item.day} — {item.start}–{item.end}
+                        <br />
+                        <button onClick={() => removeProviderBreak(item.id)} style={{ ...dangerButtonStyle, marginTop: "10px" }}>Törlés</button>
+                      </div>
+                    ))}
+
+                    <br /><br />
+                    <button onClick={generateSlots} style={providerSmallButtonStyle}>Időpontok generálása</button>
+                  </div>
+                )}
+              </div>
 
               <div style={{ ...premiumListCardStyle, textAlign: "center", marginBottom: "18px" }}>
                 <h4 style={{ marginTop: 0 }}>Generált időpontok kezelése</h4>
