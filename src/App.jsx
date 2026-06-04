@@ -62,6 +62,9 @@ function App() {
   const [hiddenProviderMessageKeys, setHiddenProviderMessageKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenProviderMessageKeys")) || []);
   const [hiddenGuestNotificationKeys, setHiddenGuestNotificationKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenGuestNotificationKeys")) || []);
   const [hiddenGuestMessageKeys, setHiddenGuestMessageKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenGuestMessageKeys")) || []);
+  const [hiddenGuestCancelledBookingKeys, setHiddenGuestCancelledBookingKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenGuestCancelledBookingKeys")) || []);
+  const [providerSeenOverviewCounts, setProviderSeenOverviewCounts] = useState(() => JSON.parse(localStorage.getItem("providerSeenOverviewCounts")) || {});
+  const [guestSeenOverviewCounts, setGuestSeenOverviewCounts] = useState(() => JSON.parse(localStorage.getItem("guestSeenOverviewCounts")) || {});
   const [showProviderGuestCodeEdit, setShowProviderGuestCodeEdit] = useState(false);
   const [showProviderMessages, setShowProviderMessages] = useState(false);
   const [showProviderServices, setShowProviderServices] = useState(false);
@@ -105,6 +108,9 @@ function App() {
   useEffect(() => localStorage.setItem("hiddenProviderMessageKeys", JSON.stringify(hiddenProviderMessageKeys)), [hiddenProviderMessageKeys]);
   useEffect(() => localStorage.setItem("hiddenGuestNotificationKeys", JSON.stringify(hiddenGuestNotificationKeys)), [hiddenGuestNotificationKeys]);
   useEffect(() => localStorage.setItem("hiddenGuestMessageKeys", JSON.stringify(hiddenGuestMessageKeys)), [hiddenGuestMessageKeys]);
+  useEffect(() => localStorage.setItem("hiddenGuestCancelledBookingKeys", JSON.stringify(hiddenGuestCancelledBookingKeys)), [hiddenGuestCancelledBookingKeys]);
+  useEffect(() => localStorage.setItem("providerSeenOverviewCounts", JSON.stringify(providerSeenOverviewCounts)), [providerSeenOverviewCounts]);
+  useEffect(() => localStorage.setItem("guestSeenOverviewCounts", JSON.stringify(guestSeenOverviewCounts)), [guestSeenOverviewCounts]);
 
 
   useEffect(() => {
@@ -215,6 +221,36 @@ function App() {
     return (guest.notifications || []).filter(
       (notification) => !hiddenGuestNotificationKeys.includes(getGuestNotificationKey(guest.id, notification))
     );
+  }
+
+  function getOverviewSeenKey(ownerId, panelKey) {
+    return `${normalizeId(ownerId)}|${panelKey}`;
+  }
+
+  function getSeenCount(seenCounts, ownerId, panelKey) {
+    return Number(seenCounts?.[getOverviewSeenKey(ownerId, panelKey)] || 0);
+  }
+
+  function hasUnseenOverviewItem(seenCounts, ownerId, panelKey, currentValue) {
+    return Number(currentValue || 0) > 0 && Number(currentValue || 0) > getSeenCount(seenCounts, ownerId, panelKey);
+  }
+
+  function markProviderOverviewPanelSeen(provider, panelKey, value) {
+    if (!provider || !panelKey) return;
+
+    setProviderSeenOverviewCounts((currentCounts) => ({
+      ...currentCounts,
+      [getOverviewSeenKey(provider.id, panelKey)]: Number(value || 0),
+    }));
+  }
+
+  function markGuestOverviewPanelSeen(guest, panelKey, value) {
+    if (!guest || !panelKey) return;
+
+    setGuestSeenOverviewCounts((currentCounts) => ({
+      ...currentCounts,
+      [getOverviewSeenKey(guest.id, panelKey)]: Number(value || 0),
+    }));
   }
 
   function normalizePhoneForCall(phone) {
@@ -2988,20 +3024,37 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
         >
           {statCards.map((card) => {
             const active = providerOverviewPanel === card.key;
+            const hasUnseen = hasUnseenOverviewItem(providerSeenOverviewCounts, provider.id, card.key, card.value);
 
             return (
               <div
                 key={card.key}
                 style={{
-                  border: active ? "2px solid #1b5e20" : "1px solid rgba(117,184,42,0.28)",
+                  border: active ? "2px solid #1b5e20" : hasUnseen ? "2px solid #9b1c31" : "1px solid rgba(117,184,42,0.28)",
                   borderRadius: "18px",
-                  background: active ? "linear-gradient(180deg, #f2ffe9 0%, #ffffff 100%)" : "rgba(255,255,255,0.88)",
-                  boxShadow: active ? "0 12px 28px rgba(27,94,32,0.14)" : "0 8px 18px rgba(36,59,85,0.07)",
+                  background: active
+                    ? "linear-gradient(180deg, #f2ffe9 0%, #ffffff 100%)"
+                    : hasUnseen
+                      ? "linear-gradient(180deg, #fff6f8 0%, #ffffff 100%)"
+                      : "rgba(255,255,255,0.88)",
+                  boxShadow: active
+                    ? "0 12px 28px rgba(27,94,32,0.14)"
+                    : hasUnseen
+                      ? "0 12px 28px rgba(155,28,49,0.16)"
+                      : "0 8px 18px rgba(36,59,85,0.07)",
                   overflow: "hidden",
                 }}
               >
                 <button
-                  onClick={() => setProviderOverviewPanel(active ? "" : card.key)}
+                  onClick={() => {
+                    if (active) {
+                      setProviderOverviewPanel("");
+                      return;
+                    }
+
+                    markProviderOverviewPanelSeen(provider, card.key, card.value);
+                    setProviderOverviewPanel(card.key);
+                  }}
                   style={{
                     width: "100%",
                     border: "none",
@@ -3017,10 +3070,13 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
                   title={active ? "Részletek bezárása" : "Részletek megnyitása"}
                 >
                   <span>
-                    <span style={{ display: "block", fontSize: "13px", color: "#555", fontWeight: "700" }}>{card.label}</span>
-                    <span style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "#1b5e20", lineHeight: 1.1 }}>{card.value}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: hasUnseen ? "#9b1c31" : "#555", fontWeight: "800" }}>
+                      {card.label}
+                      {hasUnseen && <span style={overviewNewBadgeStyle}>Új</span>}
+                    </span>
+                    <span style={{ display: "block", fontSize: "24px", fontWeight: "800", color: hasUnseen ? "#9b1c31" : "#1b5e20", lineHeight: 1.1 }}>{card.value}</span>
                   </span>
-                  <span style={{ color: active ? "#1b5e20" : "#777", fontSize: "18px", fontWeight: "800" }}>
+                  <span style={{ color: active ? "#1b5e20" : hasUnseen ? "#9b1c31" : "#777", fontSize: "18px", fontWeight: "800" }}>
                     {active ? "−" : "+"}
                   </span>
                 </button>
@@ -3258,10 +3314,13 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "providerNotifications") {
       return (
         <div style={panelBoxStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
             <h4 style={{ margin: 0 }}>Értesítések</h4>
             {providerNotifications.length > 0 && (
-              <button onClick={clearProviderNotifications} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
+              <button
+                onClick={clearProviderNotifications}
+                style={{ ...dangerButtonStyle, width: "100%", maxWidth: "320px", alignSelf: "center", padding: "10px 14px", fontSize: "13px" }}
+              >
                 Értesítések törlése
               </button>
             )}
@@ -3303,12 +3362,24 @@ function renderProviderOverviewPanel(provider, panel) {
       .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
   }
 
+  function getGuestCancelledBookingKey(guestId, booking) {
+    return `${normalizeId(guestId)}|${normalizeId(booking?.id)}|${String(booking?.date || "").trim()}|${String(booking?.time || "").trim()}`;
+  }
+
   function getGuestCancelledBookings(guest) {
     if (!guest) return [];
 
     return guestBookings
       .filter((booking) => booking && idsEqual(booking.guestId, guest.id) && !booking.active && (booking.cancelledByGuest || booking.cancelledByProvider))
       .sort((a, b) => `${b.date || ""} ${b.time || ""}`.localeCompare(`${a.date || ""} ${a.time || ""}`));
+  }
+
+  function getVisibleGuestCancelledBookings(guest) {
+    if (!guest) return [];
+
+    return getGuestCancelledBookings(guest).filter(
+      (booking) => !hiddenGuestCancelledBookingKeys.includes(getGuestCancelledBookingKey(guest.id, booking))
+    );
   }
 
   function getVisibleGuestMessages(guestId) {
@@ -3338,7 +3409,7 @@ function renderProviderOverviewPanel(provider, panel) {
       activeBookings: activeBookings.length,
       guestMessages: getVisibleGuestMessages(guest.id).length,
       guestNotifications: getVisibleGuestNotifications(guest).length,
-      cancelledBookings: getGuestCancelledBookings(guest).length,
+      cancelledBookings: getVisibleGuestCancelledBookings(guest).length,
     };
   }
 
@@ -3384,6 +3455,26 @@ function renderProviderOverviewPanel(provider, panel) {
     setGuests(updatedGuests);
     setActiveGuest({ ...activeGuest, notifications: [] });
     alert("Értesítések törölve.");
+  }
+
+  function clearGuestCancelledBookings() {
+    if (!activeGuest) return;
+
+    const visibleCancelledBookings = getVisibleGuestCancelledBookings(activeGuest);
+
+    if (visibleCancelledBookings.length === 0) {
+      alert("Nincs törölhető lemondott időpont.");
+      return;
+    }
+
+    if (!confirm("Biztosan törlöd a lemondott időpontok látható listáját?")) return;
+
+    const keysToHide = visibleCancelledBookings.map((booking) =>
+      getGuestCancelledBookingKey(activeGuest.id, booking)
+    );
+
+    setHiddenGuestCancelledBookingKeys((currentKeys) => [...new Set([...currentKeys, ...keysToHide])]);
+    alert("Lemondott időpontok törölve.");
   }
 
   function renderGuestBookingCard(booking, compact = false) {
@@ -3502,7 +3593,7 @@ function renderProviderOverviewPanel(provider, panel) {
     const todayText = formatDate(new Date());
     const activeBookings = getGuestActiveBookings(guest);
     const todayBookings = activeBookings.filter((booking) => booking.date === todayText);
-    const cancelledBookings = getGuestCancelledBookings(guest);
+    const cancelledBookings = getVisibleGuestCancelledBookings(guest);
     const guestMessages = getVisibleGuestMessages(guest.id);
     const guestNotifications = getVisibleGuestNotifications(guest);
 
@@ -3571,10 +3662,13 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "guestNotifications") {
       return (
         <div style={panelBoxStyle}>
-          <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
-            <h4 style={{ marginTop: 0, marginBottom: "8px" }}>Értesítések</h4>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
+            <h4 style={{ marginTop: 0, marginBottom: "4px" }}>Értesítések</h4>
             {guestNotifications.length > 0 && (
-              <button onClick={clearGuestNotifications} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
+              <button
+                onClick={clearGuestNotifications}
+                style={{ ...dangerButtonStyle, width: "100%", maxWidth: "320px", alignSelf: "center", padding: "10px 14px", fontSize: "13px" }}
+              >
                 Értesítések törlése
               </button>
             )}
@@ -3603,7 +3697,17 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "guestCancelledBookings") {
       return (
         <div style={panelBoxStyle}>
-          <h4 style={{ marginTop: 0 }}>Lemondott időpontok</h4>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "stretch", gap: "10px" }}>
+            <h4 style={{ marginTop: 0, marginBottom: "4px" }}>Lemondott időpontok</h4>
+            {cancelledBookings.length > 0 && (
+              <button
+                onClick={clearGuestCancelledBookings}
+                style={{ ...dangerButtonStyle, width: "100%", maxWidth: "320px", alignSelf: "center", padding: "10px 14px", fontSize: "13px" }}
+              >
+                Lemondott időpontok törlése
+              </button>
+            )}
+          </div>
           {cancelledBookings.length === 0 && <p>Nincs lemondott időpont.</p>}
           {cancelledBookings.map((booking) => (
             <div key={booking.id} style={premiumListCardStyle}>
@@ -3644,20 +3748,37 @@ function renderProviderOverviewPanel(provider, panel) {
         <div style={{ display: "flex", flexDirection: "column", gap: "10px", marginBottom: "12px" }}>
           {statCards.map((card) => {
             const active = guestOverviewPanel === card.key;
+            const hasUnseen = hasUnseenOverviewItem(guestSeenOverviewCounts, guest.id, card.key, card.value);
 
             return (
               <div
                 key={card.key}
                 style={{
-                  border: active ? "2px solid #7f5a83" : "1px solid rgba(127,90,131,0.24)",
+                  border: active ? "2px solid #7f5a83" : hasUnseen ? "2px solid #9b1c31" : "1px solid rgba(127,90,131,0.24)",
                   borderRadius: "18px",
-                  background: active ? "linear-gradient(180deg, #fbf2ff 0%, #ffffff 100%)" : "rgba(255,255,255,0.88)",
-                  boxShadow: active ? "0 12px 28px rgba(127,90,131,0.14)" : "0 8px 18px rgba(36,59,85,0.07)",
+                  background: active
+                    ? "linear-gradient(180deg, #fbf2ff 0%, #ffffff 100%)"
+                    : hasUnseen
+                      ? "linear-gradient(180deg, #fff6f8 0%, #ffffff 100%)"
+                      : "rgba(255,255,255,0.88)",
+                  boxShadow: active
+                    ? "0 12px 28px rgba(127,90,131,0.14)"
+                    : hasUnseen
+                      ? "0 12px 28px rgba(155,28,49,0.16)"
+                      : "0 8px 18px rgba(36,59,85,0.07)",
                   overflow: "hidden",
                 }}
               >
                 <button
-                  onClick={() => setGuestOverviewPanel(active ? "" : card.key)}
+                  onClick={() => {
+                    if (active) {
+                      setGuestOverviewPanel("");
+                      return;
+                    }
+
+                    markGuestOverviewPanelSeen(guest, card.key, card.value);
+                    setGuestOverviewPanel(card.key);
+                  }}
                   style={{
                     width: "100%",
                     border: "none",
@@ -3672,10 +3793,13 @@ function renderProviderOverviewPanel(provider, panel) {
                   }}
                 >
                   <span>
-                    <span style={{ display: "block", fontSize: "13px", color: "#555", fontWeight: "700" }}>{card.label}</span>
-                    <span style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "#7f5a83", lineHeight: 1.1 }}>{card.value}</span>
+                    <span style={{ display: "flex", alignItems: "center", gap: "8px", fontSize: "13px", color: hasUnseen ? "#9b1c31" : "#555", fontWeight: "800" }}>
+                      {card.label}
+                      {hasUnseen && <span style={overviewNewBadgeStyle}>Új</span>}
+                    </span>
+                    <span style={{ display: "block", fontSize: "24px", fontWeight: "800", color: hasUnseen ? "#9b1c31" : "#7f5a83", lineHeight: 1.1 }}>{card.value}</span>
                   </span>
-                  <span style={{ color: active ? "#7f5a83" : "#777", fontSize: "18px", fontWeight: "800" }}>
+                  <span style={{ color: active ? "#7f5a83" : hasUnseen ? "#9b1c31" : "#777", fontSize: "18px", fontWeight: "800" }}>
                     {active ? "−" : "+"}
                   </span>
                 </button>
@@ -6602,6 +6726,20 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
     color: "white",
     fontWeight: "700",
     cursor: "pointer",
+  };
+
+  const overviewNewBadgeStyle = {
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "3px 8px",
+    borderRadius: "999px",
+    background: "linear-gradient(135deg, #9b1c31 0%, #7f5a83 100%)",
+    color: "white",
+    fontSize: "11px",
+    fontWeight: "900",
+    letterSpacing: "0.2px",
+    boxShadow: "0 6px 16px rgba(155,28,49,0.18)",
   };
 
   const premiumToggleRowStyle = {
