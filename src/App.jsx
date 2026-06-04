@@ -98,6 +98,7 @@ function App() {
   const [breakDay, setBreakDay] = useState("Hétfő");
   const [breakDate, setBreakDate] = useState("");
   const [breakType, setBreakType] = useState("weekly");
+  const [breakWeeklyScope, setBreakWeeklyScope] = useState("selectedDay");
   const lastHistoryKeyRef = useRef("");
 
   useEffect(() => localStorage.setItem("providers", JSON.stringify(providers)), [providers]);
@@ -2740,6 +2741,89 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     });
   }
 
+  function getProviderBreakTargets() {
+    if (breakType === "single") {
+      return [{ type: "single", day: "", date: breakDate }];
+    }
+
+    if (breakWeeklyScope === "workdays") {
+      const providerWorkDays = Array.isArray(workDays) && workDays.length > 0
+        ? workDays
+        : Array.isArray(activeProvider?.workDays)
+          ? activeProvider.workDays
+          : [];
+
+      return providerWorkDays.map((day) => ({ type: "weekly", day, date: "" }));
+    }
+
+    return [{ type: "weekly", day: breakDay, date: "" }];
+  }
+
+  function isSameBreak(firstBreak, secondBreak) {
+    return (
+      firstBreak?.type === secondBreak?.type &&
+      String(firstBreak?.day || "") === String(secondBreak?.day || "") &&
+      String(firstBreak?.date || "") === String(secondBreak?.date || "") &&
+      String(firstBreak?.start || "") === String(secondBreak?.start || "") &&
+      String(firstBreak?.end || "") === String(secondBreak?.end || "")
+    );
+  }
+
+  function doesBreakApplyToSlot(breakItem, slot) {
+    if (!breakItem || !slot) return false;
+
+    const slotDate = slot.date || "";
+    const slotDay = slot.day || (slotDate ? getHungarianDayName(new Date(`${slotDate}T00:00:00`)) : "");
+
+    if (breakItem.type === "single") {
+      if (!breakItem.date || breakItem.date !== slotDate) return false;
+    } else if (breakItem.day !== slotDay) {
+      return false;
+    }
+
+    return slotOverlapsBreak(timeToMinutes(slot.time), Number(activeProvider?.slotLength || slotLength || 60), breakItem);
+  }
+
+  function getSlotsAffectedByBreaks(provider, breakItems) {
+    const slots = Array.isArray(provider?.slots) ? provider.slots : [];
+    const affectedSlots = slots.filter((slot) =>
+      breakItems.some((breakItem) => doesBreakApplyToSlot(breakItem, slot))
+    );
+
+    return {
+      removableSlots: affectedSlots.filter((slot) => !slot.booked),
+      bookedSlots: affectedSlots.filter((slot) => slot.booked),
+    };
+  }
+
+  async function deleteUnbookedBreakSlotsFromSupabase(provider, slotsToDelete) {
+    if (!provider || !Array.isArray(slotsToDelete) || slotsToDelete.length === 0) return { deleted: 0, error: null };
+
+    const providerDbId = await getSupabaseProviderId(provider);
+
+    if (!providerDbId) return { deleted: 0, error: null };
+
+    const uuidSlotIds = slotsToDelete
+      .map((slot) => slot.id)
+      .filter((slotId) => isLikelyUuid(slotId));
+
+    if (uuidSlotIds.length === 0) return { deleted: 0, error: null };
+
+    const { error } = await supabase
+      .from("idopontok")
+      .delete()
+      .eq("szolgaltato_id", providerDbId)
+      .eq("foglalt", false)
+      .in("id", uuidSlotIds);
+
+    if (error) {
+      console.error("Szünet miatt kihagyott időpontok törlése nem sikerült:", error);
+      return { deleted: 0, error };
+    }
+
+    return { deleted: uuidSlotIds.length, error: null };
+  }
+
   async function addProviderBreak() {
     if (!activeProvider) return;
 
@@ -2758,41 +2842,105 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       return;
     }
 
-    const newBreak = {
-      id: `${Date.now()}-${Math.random()}`,
-      type: breakType,
-      day: breakType === "weekly" ? breakDay : "",
-      date: breakType === "single" ? breakDate : "",
+    const targets = getProviderBreakTargets();
+
+    if (targets.length === 0) {
+      alert("Ismétlődő szünethez válassz munkanapot, vagy állítsd be a munkanapokat.");
+      return;
+    }
+
+    const existingBreaks = Array.isArray(activeProvider.breaks) ? activeProvider.breaks : [];
+    const candidateBreaks = targets.map((target, index) => ({
+      id: `${Date.now()}-${index}-${Math.random()}`,
+      type: target.type,
+      day: target.day,
+      date: target.date,
       start: breakStart,
       end: breakEnd,
-    };
+    }));
 
-    const updatedProviders = providers.map((provider) =>
-      provider.id === activeProvider.id
-        ? { ...provider, breaks: [...(provider.breaks || []), newBreak] }
-        : provider
+    const newBreaks = candidateBreaks.filter(
+      (candidateBreak) => !existingBreaks.some((existingBreak) => isSameBreak(existingBreak, candidateBreak))
     );
 
+    if (newBreaks.length === 0) {
+      alert("Ez a szünet már szerepel a listában.");
+      return;
+    }
+
+    const affectedSlots = getSlotsAffectedByBreaks(activeProvider, newBreaks);
+    const removableSlotKeys = new Set(
+      affectedSlots.removableSlots.map((slot) => `${normalizeId(slot.id)}|${slot.date}|${slot.time}`)
+    );
+
+    const updatedProviders = providers.map((provider) => {
+      if (!idsEqual(provider.id, activeProvider.id)) return provider;
+
+      return {
+        ...provider,
+        breaks: [...(provider.breaks || []), ...newBreaks],
+        slots: (provider.slots || []).filter(
+          (slot) => !removableSlotKeys.has(`${normalizeId(slot.id)}|${slot.date}|${slot.time}`)
+        ),
+      };
+    });
+
     setProviders(updatedProviders);
-    setActiveProvider(updatedProviders.find((provider) => provider.id === activeProvider.id));
+
+    const updatedActiveProvider = updatedProviders.find((provider) => idsEqual(provider.id, activeProvider.id));
+    setActiveProvider(updatedActiveProvider);
+
+    if (selectedProvider && idsEqual(selectedProvider.id, activeProvider.id)) {
+      setSelectedProvider(updatedActiveProvider);
+    }
+
+    if (changeProvider && idsEqual(changeProvider.id, activeProvider.id)) {
+      setChangeProvider(updatedActiveProvider);
+    }
 
     const providerDbId = await getSupabaseProviderId(activeProvider);
+    let supabaseBreakMessage = "";
+
     if (providerDbId) {
-      const { error } = await supabase.from("szunetek").insert([
-        {
-          szolgaltato_id: providerDbId,
-          tipus: newBreak.type,
-          nap: newBreak.day || null,
-          datum: newBreak.date || null,
-          kezdet: newBreak.start,
-          veg: newBreak.end,
-        },
-      ]);
+      const rows = newBreaks.map((newBreak) => ({
+        szolgaltato_id: providerDbId,
+        tipus: newBreak.type,
+        nap: newBreak.day || null,
+        datum: newBreak.date || null,
+        kezdet: newBreak.start,
+        veg: newBreak.end,
+      }));
+
+      const { error } = await supabase.from("szunetek").insert(rows);
 
       if (error) {
         console.warn("A szünet helyben létrejött, de Supabase-be még nem menthető. Valószínűleg hiányzik a szunetek tábla.", error);
+        supabaseBreakMessage = "\n\nFigyelem: a szünet helyben létrejött, de Supabase-be nem sikerült menteni. Futtasd le a szunetek tábla SQL-t.";
+      } else {
+        supabaseBreakMessage = `\n\nSupabase mentés: ${rows.length} szünet elmentve.`;
       }
+
+      const slotDeleteResult = await deleteUnbookedBreakSlotsFromSupabase(activeProvider, affectedSlots.removableSlots);
+      if (slotDeleteResult.error) {
+        supabaseBreakMessage += "\nFigyelem: néhány régi szabad időpont Supabase törlése nem sikerült.";
+      } else if (slotDeleteResult.deleted > 0) {
+        supabaseBreakMessage += `\nA szünettel ütköző ${slotDeleteResult.deleted} régi szabad időpont törölve lett Supabase-ből.`;
+      }
+    } else {
+      supabaseBreakMessage = "\n\nFigyelem: a szünet helyben létrejött. Supabase mentéshez Supabase-ben létező szolgáltatóval kell belépni.";
     }
+
+    setBreakDate("");
+
+    alert(
+      `Szünet hozzáadva: ${newBreaks.length} db.\n` +
+      `A következő időpont-generálás már kihagyja ezt az időszakot.\n` +
+      `Régi szabad, ütköző időpontok eltávolítva: ${affectedSlots.removableSlots.length} db.` +
+      (affectedSlots.bookedSlots.length > 0
+        ? `\n\nFigyelem: ${affectedSlots.bookedSlots.length} már foglalt időpont beleesik a szünetbe. Ezeket nem töröltem automatikusan, mert vendéghez tartoznak. Ezeket külön módosítsd vagy mondd le.`
+        : "") +
+      supabaseBreakMessage
+    );
   }
 
   async function removeProviderBreak(breakId) {
@@ -7465,30 +7613,78 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                     ))}
 
                     <h3>Napközbeni szünetek</h3>
-                    <p style={premiumHintStyle}>Állíts be ismétlődő vagy egyszeri szünetet, például ebédidőt. Az időpont generálás ezeket kihagyja.</p>
+                    <p style={premiumHintStyle}>
+                      Reggeli szünet, ebédszünet vagy egyszeri köztes program. Az időpont-generálás kihagyja ezeket,
+                      és a már meglévő, még szabad ütköző időpontokat is eltávolítja.
+                    </p>
 
-                    <select value={breakType} onChange={(e) => setBreakType(e.target.value)} style={premiumSelectStyle}>
-                      <option value="weekly">Ismétlődő heti szünet</option>
-                      <option value="single">Egyszeri szünet</option>
-                    </select>
+                    <div style={premiumListCardStyle}>
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center", marginBottom: "12px" }}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBreakStart("09:30");
+                            setBreakEnd("10:00");
+                          }}
+                          style={premiumNeutralButtonStyle}
+                        >
+                          Reggeli szünet 09:30–10:00
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setBreakStart("12:00");
+                            setBreakEnd("13:00");
+                          }}
+                          style={premiumNeutralButtonStyle}
+                        >
+                          Ebédszünet 12:00–13:00
+                        </button>
+                      </div>
 
-                    {breakType === "weekly" ? (
-                      <select value={breakDay} onChange={(e) => setBreakDay(e.target.value)} style={premiumSelectStyle}>
-                        {days.map((day) => <option key={day} value={day}>{day}</option>)}
+                      <select value={breakType} onChange={(e) => setBreakType(e.target.value)} style={premiumSelectStyle}>
+                        <option value="weekly">Ismétlődő heti szünet</option>
+                        <option value="single">Egyszeri szünet</option>
                       </select>
-                    ) : (
-                      <input type="date" value={breakDate} onChange={(e) => setBreakDate(e.target.value)} style={premiumInlineInputStyle} />
-                    )}
 
-                    <input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={premiumInlineInputStyle} />
-                    <input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={premiumInlineInputStyle} />
-                    <button onClick={addProviderBreak} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Szünet hozzáadása</button>
+                      {breakType === "weekly" ? (
+                        <>
+                          <select value={breakWeeklyScope} onChange={(e) => setBreakWeeklyScope(e.target.value)} style={premiumSelectStyle}>
+                            <option value="selectedDay">Csak egy kiválasztott napra</option>
+                            <option value="workdays">Minden bejelölt munkanapra</option>
+                          </select>
+
+                          {breakWeeklyScope === "selectedDay" && (
+                            <select value={breakDay} onChange={(e) => setBreakDay(e.target.value)} style={premiumSelectStyle}>
+                              {days.map((day) => <option key={day} value={day}>{day}</option>)}
+                            </select>
+                          )}
+                        </>
+                      ) : (
+                        <input type="date" value={breakDate} onChange={(e) => setBreakDate(e.target.value)} style={premiumInlineInputStyle} />
+                      )}
+
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", alignItems: "center", marginTop: "12px" }}>
+                        <label>
+                          Kezdete<br />
+                          <input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={premiumInlineInputStyle} />
+                        </label>
+                        <label>
+                          Vége<br />
+                          <input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={premiumInlineInputStyle} />
+                        </label>
+                        <button onClick={addProviderBreak} style={providerSmallButtonStyle}>Szünet hozzáadása</button>
+                      </div>
+                    </div>
 
                     {(activeProvider.breaks || []).length === 0 && <p>Nincs napközbeni szünet megadva.</p>}
                     {(activeProvider.breaks || []).map((item) => (
                       <div key={item.id} style={premiumListCardStyle}>
-                        <b>{item.type === "single" ? formatDateHu(item.date) : item.day}</b> — {item.start}–{item.end}
-                        <button onClick={() => removeProviderBreak(item.id)} style={{ ...dangerButtonStyle, marginLeft: "10px" }}>Törlés</button>
+                        <b>{item.type === "single" ? "Egyszeri" : "Heti ismétlődő"}</b>
+                        <br />
+                        {item.type === "single" ? formatDateHu(item.date) : item.day} — {item.start}–{item.end}
+                        <br />
+                        <button onClick={() => removeProviderBreak(item.id)} style={{ ...dangerButtonStyle, marginTop: "10px" }}>Törlés</button>
                       </div>
                     ))}
 
