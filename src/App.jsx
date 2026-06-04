@@ -3383,14 +3383,21 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     const providerMessages = getMessagesForProvider(provider.id);
     const registeredGuests = getRegisteredGuestsForProvider(provider.id);
 
-    const upcomingBookings = providerBookings.filter(
-      (booking) => booking.date && booking.date >= todayText
-    );
+    const now = new Date();
+    const upcomingBookings = providerBookings.filter((booking) => {
+      if (!booking.date || !booking.time) return false;
+
+      const bookingDateTime = new Date(`${booking.date}T${String(booking.time).slice(0, 5)}:00`);
+      if (Number.isNaN(bookingDateTime.getTime())) return false;
+
+      return bookingDateTime.getTime() >= now.getTime();
+    });
 
     const sortedUpcomingBookings = [...upcomingBookings].sort((a, b) => {
-      const aValue = `${a.date || ""} ${a.time || ""}`;
-      const bValue = `${b.date || ""} ${b.time || ""}`;
-      return aValue.localeCompare(bValue);
+      const aDateTime = new Date(`${a.date || ""}T${String(a.time || "").slice(0, 5)}:00`).getTime();
+      const bDateTime = new Date(`${b.date || ""}T${String(b.time || "").slice(0, 5)}:00`).getTime();
+
+      return aDateTime - bDateTime;
     });
 
     return {
