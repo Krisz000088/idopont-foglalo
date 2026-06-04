@@ -3068,6 +3068,161 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     );
   }
 
+
+  async function deleteProviderGeneratedSlots(scope, deleteMode) {
+    if (!activeProvider) return;
+
+    const allSlots = Array.isArray(activeProvider.slots) ? activeProvider.slots : [];
+    const dateFilter = scope === "selectedDay" ? providerCalendarDate : "";
+
+    if (scope === "selectedDay" && !dateFilter) {
+      alert("Először válassz ki egy napot a naptárban.");
+      return;
+    }
+
+    const slotsOnScope = allSlots.filter((slot) => slot && (!dateFilter || slot.date === dateFilter));
+    const slotsToDelete = deleteMode === "free"
+      ? slotsOnScope.filter((slot) => !slot.booked)
+      : slotsOnScope;
+
+    const bookedSlotsToCancel = slotsToDelete.filter((slot) => slot.booked);
+
+    if (slotsToDelete.length === 0) {
+      alert(dateFilter ? "Ezen a napon nincs törölhető időpont." : "Nincs törölhető időpont.");
+      return;
+    }
+
+    const scopeText = dateFilter ? `a(z) ${formatDateHu(dateFilter)} nap` : "az összes generált nap";
+    const modeText = deleteMode === "free" ? "csak a SZABAD időpontokat" : "MINDEN időpontot";
+
+    const confirmText =
+      `Biztosan törlöd ${scopeText} esetén ${modeText}?\n\n` +
+      `Törlendő időpontok: ${slotsToDelete.length}` +
+      (bookedSlotsToCancel.length > 0
+        ? `\n\nFigyelem: ebből ${bookedSlotsToCancel.length} foglalt időpont. Ezekhez tartozó foglalások lemondottá válnak, a vendégek appon belüli értesítést kapnak.`
+        : "");
+
+    if (!confirm(confirmText)) return;
+
+    const deletedSlotKeys = new Set(
+      slotsToDelete.map((slot) => `${normalizeId(slot.id)}|${slot.date}|${slot.time}`)
+    );
+    const cancelledBookingSlotIds = new Set(bookedSlotsToCancel.map((slot) => normalizeId(slot.id)));
+
+    const newGuestNotifications = [];
+    const now = Date.now();
+
+    bookedSlotsToCancel.forEach((slot, index) => {
+      if (!slot.guestId) return;
+
+      newGuestNotifications.push({
+        guestId: slot.guestId,
+        notification: {
+          id: `${now}-${index}`,
+          text: `Fontos lemondási értesítés`,
+          message: `${activeProvider.name} törölte ezt az időpontot: ${formatDateHu(slot.date)} ${slot.time}`,
+          type: "provider_cancel",
+        },
+      });
+    });
+
+    const updatedBookings = guestBookings.map((booking) =>
+      booking.active && cancelledBookingSlotIds.has(normalizeId(booking.slotId))
+        ? {
+            ...booking,
+            active: false,
+            cancelledByProvider: true,
+            providerCancelMessage: "A szolgáltató törölte a generált időpontot.",
+          }
+        : booking
+    );
+
+    const updatedGuests = guests.map((guest) => {
+      const notificationsForGuest = newGuestNotifications
+        .filter((item) => idsEqual(item.guestId, guest.id))
+        .map((item) => item.notification);
+
+      if (notificationsForGuest.length === 0) return guest;
+
+      return {
+        ...guest,
+        notifications: [...notificationsForGuest, ...(guest.notifications || [])],
+      };
+    });
+
+    const updatedProviders = providers.map((provider) => {
+      if (!idsEqual(provider.id, activeProvider.id)) return provider;
+
+      return {
+        ...provider,
+        slots: (provider.slots || []).filter(
+          (slot) => !deletedSlotKeys.has(`${normalizeId(slot.id)}|${slot.date}|${slot.time}`)
+        ),
+      };
+    });
+
+    setProviders(updatedProviders);
+    setGuestBookings(updatedBookings);
+    setGuests(updatedGuests);
+
+    const updatedActiveProvider = updatedProviders.find((provider) => idsEqual(provider.id, activeProvider.id));
+    setActiveProvider(updatedActiveProvider);
+
+    if (selectedProvider && idsEqual(selectedProvider.id, activeProvider.id)) {
+      setSelectedProvider(updatedActiveProvider);
+    }
+
+    if (changeProvider && idsEqual(changeProvider.id, activeProvider.id)) {
+      setChangeProvider(updatedActiveProvider);
+    }
+
+    if (activeGuest) {
+      refreshGuestViews(updatedGuests, activeGuest.id);
+    }
+
+    const providerDbId = await getSupabaseProviderId(activeProvider);
+    let supabaseMessage = "";
+
+    if (providerDbId) {
+      const uuidSlotIds = slotsToDelete
+        .map((slot) => slot.id)
+        .filter((slotId) => isLikelyUuid(slotId));
+
+      if (uuidSlotIds.length > 0) {
+        const { error: bookingDeleteError } = await supabase
+          .from("foglalasok")
+          .delete()
+          .in("idopont_id", uuidSlotIds);
+
+        if (bookingDeleteError) {
+          console.error("Foglalások törlése Supabase-ből nem sikerült:", bookingDeleteError);
+          supabaseMessage += "\nFigyelem: néhány foglalást nem sikerült Supabase-ből törölni.";
+        }
+
+        const deleteQuery = supabase
+          .from("idopontok")
+          .delete()
+          .eq("szolgaltato_id", providerDbId)
+          .in("id", uuidSlotIds);
+
+        const { error: slotDeleteError } = await deleteQuery;
+
+        if (slotDeleteError) {
+          console.error("Időpontok törlése Supabase-ből nem sikerült:", slotDeleteError);
+          supabaseMessage += "\nFigyelem: helyben töröltem, de Supabase-ben nem sikerült minden időpontot törölni.";
+        } else {
+          supabaseMessage += `\nSupabase törlés: ${uuidSlotIds.length} időpont törölve.`;
+        }
+      }
+    }
+
+    alert(
+      `Törlés kész.\n\nTörölt időpontok: ${slotsToDelete.length}` +
+      (bookedSlotsToCancel.length > 0 ? `\nLemondott foglalások: ${bookedSlotsToCancel.length}` : "") +
+      supabaseMessage
+    );
+  }
+
   async function generateSlots() {
     if (!activeProvider) return;
 
@@ -7565,13 +7720,35 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   <div style={{ marginTop: "18px", textAlign: "left" }}>
 
                     <h3>Mely napokon dolgozol?</h3>
+                    <p style={premiumHintStyle}>Válaszd ki prémium gombokkal, mely napokon dolgozol.</p>
 
-                    {days.map((day) => (
-                      <label key={day} style={{ display: "block", margin: "6px" }}>
-                        <input type="checkbox" checked={workDays.includes(day)} onChange={() => toggleWorkDay(day)} />
-                        {" "}{day}
-                      </label>
-                    ))}
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", margin: "10px 0 16px" }}>
+                      {days.map((day) => {
+                        const selected = workDays.includes(day);
+
+                        return (
+                          <button
+                            key={day}
+                            type="button"
+                            onClick={() => toggleWorkDay(day)}
+                            style={{
+                              padding: "10px 14px",
+                              borderRadius: "999px",
+                              border: selected ? "1px solid #18324f" : "1px solid rgba(135, 92, 150, 0.25)",
+                              background: selected
+                                ? "linear-gradient(135deg, #18324f, #875c96)"
+                                : "rgba(255,255,255,0.92)",
+                              color: selected ? "white" : "#62546f",
+                              fontWeight: "800",
+                              cursor: "pointer",
+                              boxShadow: selected ? "0 10px 22px rgba(24, 50, 79, 0.18)" : "0 8px 18px rgba(36,59,85,0.08)",
+                            }}
+                          >
+                            {selected ? "✓ " : ""}{day}
+                          </button>
+                        );
+                      })}
+                    </div>
 
                     <p>Munkaidő kezdete:</p>
                     <input type="time" value={workStart} onChange={(e) => setWorkStart(e.target.value)} style={premiumInlineInputStyle} />
@@ -7747,17 +7924,30 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               <div style={{ ...premiumListCardStyle, textAlign: "center", marginBottom: "18px" }}>
                 <h4 style={{ marginTop: 0 }}>Generált időpontok kezelése</h4>
                 <p style={premiumHintStyle}>
-                  Ha véletlenül rossz időpontokat generáltál, itt törölheted a szabad időpontokat. A foglalt időpontokat biztonságból nem törlöm automatikusan.
+                  Ha véletlenül rossz időpontokat generáltál, itt törölhetsz mindent vagy csak szabad időpontokat.
+                  A foglalt időpontok törlésénél a vendég foglalása is lemondottá válik, ezért külön rákérdezek.
                 </p>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: "10px", justifyContent: "center" }}>
                   <button
-                    onClick={() => deleteProviderFreeSlots("all")}
+                    onClick={() => deleteProviderGeneratedSlots("all", "all")}
                     style={dangerButtonStyle}
+                  >
+                    Összes generált időpont törlése
+                  </button>
+                  <button
+                    onClick={() => deleteProviderGeneratedSlots("selectedDay", "all")}
+                    style={dangerButtonStyle}
+                  >
+                    Kiválasztott nap összes időpontjának törlése
+                  </button>
+                  <button
+                    onClick={() => deleteProviderGeneratedSlots("all", "free")}
+                    style={premiumNeutralButtonStyle}
                   >
                     Összes szabad időpont törlése
                   </button>
                   <button
-                    onClick={() => deleteProviderFreeSlots("selectedDay")}
+                    onClick={() => deleteProviderGeneratedSlots("selectedDay", "free")}
                     style={premiumNeutralButtonStyle}
                   >
                     Kiválasztott nap szabad időpontjainak törlése
