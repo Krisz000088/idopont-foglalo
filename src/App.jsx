@@ -5349,7 +5349,7 @@ function renderProviderOverviewPanel(provider, panel) {
   async function deleteProviderAccount() {
     if (!activeProvider) return;
 
-    if (!confirm("Biztosan törlöd a szolgáltatói fiókodat? Ez törli a Supabase-ből is a hozzá tartozó időpontokat, foglalásokat, üzeneteket, tiltásokat és vendégkapcsolatokat.")) return;
+    if (!confirm("Biztosan törlöd a szolgáltatói fiókodat? Ez törli a Supabase-ből is a hozzá tartozó időpontokat, foglalásokat, üzeneteket, tiltásokat, szüneteket és vendégkapcsolatokat.")) return;
 
     const providerToDelete = activeProvider;
     const providerDbId = await getSupabaseProviderId(providerToDelete);
@@ -5371,6 +5371,7 @@ function renderProviderOverviewPanel(provider, panel) {
         { table: "foglalasok", column: "szolgaltato_id" },
         { table: "kivetel_napok", column: "szolgaltato_id" },
         { table: "letiltott_vendegek", column: "szolgaltato_id" },
+        { table: "szunetek", column: "szolgaltato_id", optional: true },
         { table: "idopontok", column: "szolgaltato_id" },
       ];
 
@@ -5380,7 +5381,7 @@ function renderProviderOverviewPanel(provider, panel) {
           .delete()
           .eq(step.column, providerDbId);
 
-        if (error) {
+        if (error && !(step.optional && isMissingSupabaseTableError(error))) {
           console.error(error);
           alert(`A szolgáltatói fiók Supabase törlése nem sikerült ennél a táblánál: ${step.table}. Nézd meg a Console hibát.`);
           return;
@@ -5404,8 +5405,12 @@ function renderProviderOverviewPanel(provider, panel) {
     const updatedProviders = providers.filter((p) => p.id !== providerToDelete.id);
     const updatedGuests = guests.map((g) => ({
       ...g,
-      providerIds: (g.providerIds || []).filter((id) => id !== providerToDelete.id),
-      notifications: (g.notifications || []).filter((notification) => !idsEqual(notification.providerId, providerToDelete.id)),
+      providerIds: (g.providerIds || []).filter((id) => !idsEqual(id, providerToDelete.id)),
+      notifications: (g.notifications || []).filter(
+        (notification) =>
+          !idsEqual(notification.providerId, providerToDelete.id) &&
+          !String(notification.text || notification.message || "").includes(providerToDelete.name || "___")
+      ),
     }));
     const updatedBookings = guestBookings.filter((b) => !idsEqual(b.providerId, providerToDelete.id));
     const updatedMessages = messages.filter((message) => !idsEqual(message.providerId, providerToDelete.id));
@@ -5420,8 +5425,12 @@ function renderProviderOverviewPanel(provider, panel) {
     setSelectedSlot(null);
     setProviderCalendarDate("");
     setShowProviderNotifications(false);
+    setShowProviderMessages(false);
+    setShowProviderSettings(false);
+    setProviderOverviewPanel("");
+    setMode("");
 
-    alert(providerDbId ? "A szolgáltatói fiók helyben és Supabase-ből is törölve lett." : "A szolgáltatói fiók helyben törölve lett.");
+    alert(providerDbId ? "A szolgáltatói fiók és minden kapcsolódó adata helyben és Supabase-ből is törölve lett." : "A szolgáltatói fiók helyben törölve lett.");
   }
 
   async function deleteGuestAccount() {
@@ -5519,7 +5528,12 @@ function renderProviderOverviewPanel(provider, panel) {
     const updatedProviders = providers.map((provider) => ({
       ...provider,
       blockedEmails: (provider.blockedEmails || []).filter((email) => normalizeEmail(email) !== guestEmailValue),
-      notifications: (provider.notifications || []).filter((notification) => notification.guestId !== guestToDelete.id),
+      notifications: (provider.notifications || []).filter(
+        (notification) =>
+          !idsEqual(notification.guestId, guestToDelete.id) &&
+          !String(notification.text || notification.message || "").includes(guestToDelete.name || "___") &&
+          !String(notification.text || notification.message || "").includes(guestToDelete.email || "___")
+      ),
       slots: (provider.slots || []).map((slot) => {
         const slotBelongsToGuest =
           slot.guestId === guestToDelete.id ||
@@ -5543,12 +5557,12 @@ function renderProviderOverviewPanel(provider, panel) {
     const updatedGuests = guests.filter((guest) => guest.id !== guestToDelete.id);
     const updatedBookings = guestBookings.filter(
       (booking) =>
-        booking.guestId !== guestToDelete.id &&
+        !idsEqual(booking.guestId, guestToDelete.id) &&
         normalizeEmail(booking.guestEmail) !== guestEmailValue
     );
     const updatedMessages = messages.filter(
       (message) =>
-        message.guestId !== guestToDelete.id &&
+        !idsEqual(message.guestId, guestToDelete.id) &&
         normalizeEmail(message.guestEmail) !== guestEmailValue
     );
 
@@ -5565,8 +5579,13 @@ function renderProviderOverviewPanel(provider, panel) {
     setChangeSlot(null);
     setSelectedCalendarDate("");
     setChangeCalendarDate("");
+    setShowGuestMessages(false);
+    setShowGuestNotifications(false);
+    setShowGuestSettings(false);
+    setGuestOverviewPanel("todayGuestBookings");
+    setMode("");
 
-    alert(guestDbId ? "A vendég fiók helyben és Supabase-ből is törölve lett." : "A vendég fiók helyben törölve lett.");
+    alert(guestDbId ? "A vendég fiók és minden kapcsolódó adata helyben és Supabase-ből is törölve lett." : "A vendég fiók helyben törölve lett.");
   }
 
 
