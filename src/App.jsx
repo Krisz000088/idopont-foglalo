@@ -60,6 +60,8 @@ function App() {
   const [showProviderNotifications, setShowProviderNotifications] = useState(false);
   const [hiddenProviderNotificationKeys, setHiddenProviderNotificationKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenProviderNotificationKeys")) || []);
   const [hiddenProviderMessageKeys, setHiddenProviderMessageKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenProviderMessageKeys")) || []);
+  const [hiddenGuestNotificationKeys, setHiddenGuestNotificationKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenGuestNotificationKeys")) || []);
+  const [hiddenGuestMessageKeys, setHiddenGuestMessageKeys] = useState(() => JSON.parse(localStorage.getItem("hiddenGuestMessageKeys")) || []);
   const [showProviderGuestCodeEdit, setShowProviderGuestCodeEdit] = useState(false);
   const [showProviderMessages, setShowProviderMessages] = useState(false);
   const [showProviderServices, setShowProviderServices] = useState(false);
@@ -101,6 +103,8 @@ function App() {
   useEffect(() => localStorage.setItem("messages", JSON.stringify(messages)), [messages]);
   useEffect(() => localStorage.setItem("hiddenProviderNotificationKeys", JSON.stringify(hiddenProviderNotificationKeys)), [hiddenProviderNotificationKeys]);
   useEffect(() => localStorage.setItem("hiddenProviderMessageKeys", JSON.stringify(hiddenProviderMessageKeys)), [hiddenProviderMessageKeys]);
+  useEffect(() => localStorage.setItem("hiddenGuestNotificationKeys", JSON.stringify(hiddenGuestNotificationKeys)), [hiddenGuestNotificationKeys]);
+  useEffect(() => localStorage.setItem("hiddenGuestMessageKeys", JSON.stringify(hiddenGuestMessageKeys)), [hiddenGuestMessageKeys]);
 
 
   useEffect(() => {
@@ -194,6 +198,22 @@ function App() {
 
     return getMessagesForProvider(providerId).filter(
       (message) => isRealGuestMessage(message) && !hiddenProviderMessageKeys.includes(getProviderMessageKey(providerId, message))
+    );
+  }
+
+  function getGuestMessageKey(guestId, message) {
+    return `${normalizeId(guestId)}|${normalizeId(message?.id)}|${String(message?.text || "").trim()}`;
+  }
+
+  function getGuestNotificationKey(guestId, notification) {
+    return `${normalizeId(guestId)}|${normalizeId(notification?.id)}|${String(notification?.text || "").trim()}|${String(notification?.message || "").trim()}`;
+  }
+
+  function getVisibleGuestNotifications(guest) {
+    if (!guest) return [];
+
+    return (guest.notifications || []).filter(
+      (notification) => !hiddenGuestNotificationKeys.includes(getGuestNotificationKey(guest.id, notification))
     );
   }
 
@@ -3292,7 +3312,11 @@ function renderProviderOverviewPanel(provider, panel) {
   }
 
   function getVisibleGuestMessages(guestId) {
-    return getMessagesForGuest(guestId).filter((message) => (message?.type || "message") === "message");
+    return getMessagesForGuest(guestId).filter(
+      (message) =>
+        (message?.type || "message") === "message" &&
+        !hiddenGuestMessageKeys.includes(getGuestMessageKey(guestId, message))
+    );
   }
 
   function getGuestStats(guest) {
@@ -3313,9 +3337,53 @@ function renderProviderOverviewPanel(provider, panel) {
       todayBookings: activeBookings.filter((booking) => booking.date === todayText).length,
       activeBookings: activeBookings.length,
       guestMessages: getVisibleGuestMessages(guest.id).length,
-      guestNotifications: (guest.notifications || []).length,
+      guestNotifications: getVisibleGuestNotifications(guest).length,
       cancelledBookings: getGuestCancelledBookings(guest).length,
     };
+  }
+
+  function clearGuestMessages() {
+    if (!activeGuest) return;
+
+    const visibleMessages = getVisibleGuestMessages(activeGuest.id);
+
+    if (visibleMessages.length === 0) {
+      alert("Nincs törölhető üzenet.");
+      return;
+    }
+
+    if (!confirm("Biztosan törlöd az összes látható üzenetet?")) return;
+
+    const keysToHide = visibleMessages.map((message) => getGuestMessageKey(activeGuest.id, message));
+    setHiddenGuestMessageKeys((currentKeys) => [...new Set([...currentKeys, ...keysToHide])]);
+    alert("Üzenetek törölve.");
+  }
+
+  function clearGuestNotifications() {
+    if (!activeGuest) return;
+
+    const visibleNotifications = getVisibleGuestNotifications(activeGuest);
+
+    if (visibleNotifications.length === 0) {
+      alert("Nincs törölhető értesítés.");
+      return;
+    }
+
+    if (!confirm("Biztosan törlöd az összes látható értesítést?")) return;
+
+    const keysToHide = visibleNotifications.map((notification) =>
+      getGuestNotificationKey(activeGuest.id, notification)
+    );
+
+    setHiddenGuestNotificationKeys((currentKeys) => [...new Set([...currentKeys, ...keysToHide])]);
+
+    const updatedGuests = guests.map((guest) =>
+      idsEqual(guest.id, activeGuest.id) ? { ...guest, notifications: [] } : guest
+    );
+
+    setGuests(updatedGuests);
+    setActiveGuest({ ...activeGuest, notifications: [] });
+    alert("Értesítések törölve.");
   }
 
   function renderGuestBookingCard(booking, compact = false) {
@@ -3436,7 +3504,7 @@ function renderProviderOverviewPanel(provider, panel) {
     const todayBookings = activeBookings.filter((booking) => booking.date === todayText);
     const cancelledBookings = getGuestCancelledBookings(guest);
     const guestMessages = getVisibleGuestMessages(guest.id);
-    const guestNotifications = guest.notifications || [];
+    const guestNotifications = getVisibleGuestNotifications(guest);
 
     const panelBoxStyle = {
       ...premiumPanelStyle,
@@ -3474,7 +3542,14 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "guestMessages") {
       return (
         <div style={panelBoxStyle}>
-          <h4 style={{ marginTop: 0 }}>Üzenetek</h4>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <h4 style={{ marginTop: 0, marginBottom: "8px" }}>Üzenetek</h4>
+            {guestMessages.length > 0 && (
+              <button onClick={clearGuestMessages} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
+                Üzenetek törlése
+              </button>
+            )}
+          </div>
           {guestMessages.length === 0 && <p>Még nincs valódi üzeneted.</p>}
           {guestMessages.map((message) => (
             <div key={message.id} style={premiumListCardStyle}>
@@ -3496,7 +3571,14 @@ function renderProviderOverviewPanel(provider, panel) {
     if (panel === "guestNotifications") {
       return (
         <div style={panelBoxStyle}>
-          <h4 style={{ marginTop: 0 }}>Értesítések</h4>
+          <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+            <h4 style={{ marginTop: 0, marginBottom: "8px" }}>Értesítések</h4>
+            {guestNotifications.length > 0 && (
+              <button onClick={clearGuestNotifications} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
+                Értesítések törlése
+              </button>
+            )}
+          </div>
           {guestNotifications.length === 0 && <p>Nincs új értesítésed.</p>}
           {guestNotifications.map((notification) => {
             const important = ["cancel", "provider_cancel"].includes(notification.type);
