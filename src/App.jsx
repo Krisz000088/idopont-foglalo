@@ -7283,276 +7283,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 ))}
               </div>
 
-              <button onClick={() => setShowProviderSettings(!showProviderSettings)} style={{ ...providerSmallButtonStyle, margin: "12px 0" }}>
-                {showProviderSettings ? "Beállítások bezárása" : "Beállítások"}
-              </button>
-
-              {showProviderSettings && (
-                <div style={premiumPanelStyle}>
-                  <h3 style={{ marginTop: 0 }}>Szolgáltatói beállítások</h3>
-                  <div style={premiumToggleRowStyle}>
-                    <span>Email értesítés foglalásokról</span>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={(activeProvider.emailNotifications ?? providerEmailNotifications) !== false}
-                        onChange={(e) => updateProviderPreference("emailNotifications", e.target.checked)}
-                      />
-                      {" "}{(activeProvider.emailNotifications ?? providerEmailNotifications) !== false ? "Bekapcsolva" : "Kikapcsolva"}
-                    </label>
-                  </div>
-
-                  <div style={premiumToggleRowStyle}>
-                    <span>PIN kérése belépéskor</span>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={activeProvider.pinLoginEnabled !== false}
-                        onChange={(e) => updateProviderPreference("pinLoginEnabled", e.target.checked)}
-                      />
-                      {" "}{activeProvider.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
-                    </label>
-                  </div>
-
-                  <button onClick={saveActiveProviderSettings} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
-                    Beállítások mentése
-                  </button>
-
-                  <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
-                    Üzenet a fejlesztőnek
-                  </button>
-                  {showDeveloperContact && (
-                    <div style={{ marginTop: "12px" }}>
-                      <textarea placeholder="Írd le, mit szeretnél jelezni..." value={developerMessageText} onChange={(e) => setDeveloperMessageText(e.target.value)} style={{ ...premiumInputStyle, minHeight: "90px" }} />
-                      <button onClick={() => sendDeveloperMessage("provider", activeProvider.name, activeProvider.email)} style={providerSmallButtonStyle}>Üzenet elküldése</button>
-                    </div>
-                  )}
-
-                  <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(98, 84, 111, 0.12)" }}>
-                    <button onClick={deleteProviderAccount} style={dangerButtonStyle}>
-                      Szolgáltatói fiók törlése
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              <div style={premiumSettingsPanelStyle}>
-                <button
-                  onClick={() => setShowProviderGuestCodeEdit(!showProviderGuestCodeEdit)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderGuestCodeEdit ? "Vendégkód módosítás bezárása" : "Vendégkód módosítása"}
-                </button>
-
-                {showProviderGuestCodeEdit && (
-                  <div style={{ marginTop: "12px" }}>
-                    <input
-                      placeholder="Új vendégkód, pl. MONI-2026"
-                      value={newGuestCode}
-                      onChange={(e) => setNewGuestCode(normalizeGuestCode(e.target.value))}
-                      style={premiumInlineInputStyle}
-                    />
-                    <p>Legalább 6 karakter. A már csatlakozott vendégek megmaradnak.</p>
-                    <button onClick={changeProviderGuestCode} style={providerSmallButtonStyle}>
-                      Vendégkód mentése
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              <div style={premiumSettingsPanelStyle}>
-                <button
-                  onClick={() => setShowProviderPinEdit(!showProviderPinEdit)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderPinEdit ? "PIN módosítás bezárása" : "Saját PIN módosítása"}
-                </button>
-
-                {showProviderPinEdit && (
-                  <div style={premiumPanelStyle}>
-                    <h3>Saját PIN módosítása</h3>
-                    <p style={{ marginTop: 0 }}>Itt tudod módosítani a szolgáltatói belépési PIN-kódodat.</p>
-                    <input
-                      placeholder="Jelenlegi PIN"
-                      value={providerCurrentPin}
-                      onChange={(e) => setProviderCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                      maxLength="4"
-                      style={premiumInlineInputStyle}
-                    />
-                    <input
-                      placeholder="Új PIN"
-                      value={providerNewPin}
-                      onChange={(e) => setProviderNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                      maxLength="4"
-                      style={premiumInlineInputStyle}
-                    />
-                    <input
-                      placeholder="Új PIN még egyszer"
-                      value={providerNewPinAgain}
-                      onChange={(e) => setProviderNewPinAgain(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                      maxLength="4"
-                      style={premiumInlineInputStyle}
-                    />
-                    <button onClick={changeProviderPin} style={providerSmallButtonStyle}>PIN módosítása</button>
-                  </div>
-                )}
-              </div>
-
-              <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowProviderMessages(!showProviderMessages)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderMessages
-                    ? `Üzenetek elrejtése (${getVisibleProviderGuestMessages(activeProvider.id).length})`
-                    : `Üzenetek megnyitása (${getVisibleProviderGuestMessages(activeProvider.id).length})`}
-                </button>
-
-                {showProviderMessages && (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
-                      <h3 style={{ marginBottom: 0 }}>Üzenetek</h3>
-                      {getVisibleProviderGuestMessages(activeProvider.id).length > 0 && (
-                        <button onClick={clearProviderGuestMessages} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
-                          Üzenetek törlése
-                        </button>
-                      )}
-                    </div>
-
-                    <p style={{ color: "#6b5d72", fontSize: "13px" }}>
-                      Itt csak a vendégek valódi, kézzel írt üzenetei jelennek meg.
-                    </p>
-
-                    {getVisibleProviderGuestMessages(activeProvider.id).length === 0 && <p>Még nincs üzenet.</p>}
-
-                    {getVisibleProviderGuestMessages(activeProvider.id).map((message) => (
-                      <div key={getProviderMessageKey(activeProvider.id, message)} style={premiumListCardStyle}>
-                        <b>Vendégtől: {message.fromName}</b>
-                        {message.date && message.time && (
-                          <>
-                            <br />
-                            Időpont: {message.date} {message.time}
-                          </>
-                        )}
-                        <br />
-                        Üzenet: {message.text}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowProviderNotifications(!showProviderNotifications)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderNotifications
-                    ? `Értesítések elrejtése (${getVisibleProviderNotifications(activeProvider).length})`
-                    : `Értesítések megnyitása (${getVisibleProviderNotifications(activeProvider).length})`}
-                </button>
-
-                {showProviderNotifications && (
-                  <>
-                    <h3>Értesítések</h3>
-
-                    {getVisibleProviderNotifications(activeProvider).length === 0 && <p>Még nincs értesítés.</p>}
-
-                    {getVisibleProviderNotifications(activeProvider).length > 0 && (
-                      <div style={{ ...premiumPanelStyle, margin: "10px 0 14px", textAlign: "center", background: "linear-gradient(135deg, rgba(255,245,247,0.96), rgba(255,255,255,0.96))" }}>
-                        <p style={{ marginTop: 0, marginBottom: "10px", color: "#6b2637", fontWeight: "700" }}>
-                          Ha már feldolgoztad őket, egy gombbal törölheted a látható értesítéseket.
-                        </p>
-                        <button
-                          onClick={clearProviderNotifications}
-                          style={{ ...dangerButtonStyle, width: "min(100%, 320px)", boxShadow: "0 10px 24px rgba(155, 28, 49, 0.22)" }}
-                        >
-                          Értesítések törlése
-                        </button>
-                      </div>
-                    )}
-
-                    {getVisibleProviderNotifications(activeProvider).map((n) => (
-                      <div key={getProviderNotificationKey(activeProvider.id, n)} style={premiumListCardStyle}>
-                        <b>{n.text}</b>
-                        {n.service && (
-                          <>
-                            <br />
-                            Szolgáltatás: {n.service}
-                          </>
-                        )}
-                        {n.note && (
-                          <>
-                            <br />
-                            Megjegyzés / üzenet: {n.note}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumSettingsPanelStyle}>
-                <button
-                  onClick={() => setShowProviderServices(!showProviderServices)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderServices ? "Szolgáltatások elrejtése" : `Szolgáltatások kezelése (${(activeProvider.services || []).length})`}
-                </button>
-
-                {showProviderServices && (
-                  <>
-                    <h3>Szolgáltatások</h3>
-
-                    <input
-                      placeholder="Pl. Műköröm töltés"
-                      value={newServiceName}
-                      onChange={(e) => setNewServiceName(e.target.value)}
-                      style={premiumInlineInputStyle}
-                    />
-                    <button onClick={addService} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Hozzáadás</button>
-
-                    {(activeProvider.services || []).length === 0 && <p>Még nincs szolgáltatás megadva. A vendég így is tud foglalni megjegyzéssel.</p>}
-
-                    {(activeProvider.services || []).map((service) => (
-                      <div key={service} style={{ margin: "6px 0" }}>
-                        <b>{service}</b>
-                        <button onClick={() => removeService(service)} style={{ ...dangerButtonStyle, marginLeft: "10px" }}>Törlés</button>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumSettingsPanelStyle}>
-                <button
-                  onClick={() => setShowProviderBlockedGuests(!showProviderBlockedGuests)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderBlockedGuests
-                    ? `Letiltott vendégek elrejtése (${(activeProvider.blockedEmails || []).length})`
-                    : `Letiltott vendégek megnyitása (${(activeProvider.blockedEmails || []).length})`}
-                </button>
-
-                {showProviderBlockedGuests && (
-                  <>
-                    <h3>Letiltott vendégek</h3>
-
-                    {(activeProvider.blockedEmails || []).length === 0 && <p>Nincs letiltott vendég.</p>}
-
-                    {(activeProvider.blockedEmails || []).map((email) => (
-                      <div key={email} style={{ margin: "6px 0" }}>
-                        <b>{email}</b>
-                        <button onClick={() => unblockGuestEmail(email)} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>
-                          Tiltás feloldása
-                        </button>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
               <div style={premiumSettingsPanelStyle}>
                 <button
                   onClick={() => setShowProviderScheduleSettings(!showProviderScheduleSettings)}
@@ -7690,6 +7420,182 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
                     <br /><br />
                     <button onClick={generateSlots} style={providerSmallButtonStyle}>Időpontok generálása</button>
+                  </>
+                )}
+              </div>
+
+
+              <button onClick={() => setShowProviderSettings(!showProviderSettings)} style={{ ...providerSmallButtonStyle, margin: "12px 0" }}>
+                {showProviderSettings ? "Beállítások bezárása" : "Beállítások"}
+              </button>
+
+              {showProviderSettings && (
+                <div style={premiumPanelStyle}>
+                  <h3 style={{ marginTop: 0 }}>Szolgáltatói beállítások</h3>
+                  <div style={premiumToggleRowStyle}>
+                    <span>Email értesítés foglalásokról</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={(activeProvider.emailNotifications ?? providerEmailNotifications) !== false}
+                        onChange={(e) => updateProviderPreference("emailNotifications", e.target.checked)}
+                      />
+                      {" "}{(activeProvider.emailNotifications ?? providerEmailNotifications) !== false ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+
+                  <div style={premiumToggleRowStyle}>
+                    <span>PIN kérése belépéskor</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={activeProvider.pinLoginEnabled !== false}
+                        onChange={(e) => updateProviderPreference("pinLoginEnabled", e.target.checked)}
+                      />
+                      {" "}{activeProvider.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+
+                  <button onClick={saveActiveProviderSettings} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
+                    Beállítások mentése
+                  </button>
+
+                  <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
+                    Üzenet a fejlesztőnek
+                  </button>
+                  {showDeveloperContact && (
+                    <div style={{ marginTop: "12px" }}>
+                      <textarea placeholder="Írd le, mit szeretnél jelezni..." value={developerMessageText} onChange={(e) => setDeveloperMessageText(e.target.value)} style={{ ...premiumInputStyle, minHeight: "90px" }} />
+                      <button onClick={() => sendDeveloperMessage("provider", activeProvider.name, activeProvider.email)} style={providerSmallButtonStyle}>Üzenet elküldése</button>
+                    </div>
+                  )}
+
+                  <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(98, 84, 111, 0.12)" }}>
+                    <button onClick={deleteProviderAccount} style={dangerButtonStyle}>
+                      Szolgáltatói fiók törlése
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              <div style={premiumSettingsPanelStyle}>
+                <button
+                  onClick={() => setShowProviderGuestCodeEdit(!showProviderGuestCodeEdit)}
+                  style={premiumNeutralButtonStyle}
+                >
+                  {showProviderGuestCodeEdit ? "Vendégkód módosítás bezárása" : "Vendégkód módosítása"}
+                </button>
+
+                {showProviderGuestCodeEdit && (
+                  <div style={{ marginTop: "12px" }}>
+                    <input
+                      placeholder="Új vendégkód, pl. MONI-2026"
+                      value={newGuestCode}
+                      onChange={(e) => setNewGuestCode(normalizeGuestCode(e.target.value))}
+                      style={premiumInlineInputStyle}
+                    />
+                    <p>Legalább 6 karakter. A már csatlakozott vendégek megmaradnak.</p>
+                    <button onClick={changeProviderGuestCode} style={providerSmallButtonStyle}>
+                      Vendégkód mentése
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              <div style={premiumSettingsPanelStyle}>
+                <button
+                  onClick={() => setShowProviderPinEdit(!showProviderPinEdit)}
+                  style={premiumNeutralButtonStyle}
+                >
+                  {showProviderPinEdit ? "PIN módosítás bezárása" : "Saját PIN módosítása"}
+                </button>
+
+                {showProviderPinEdit && (
+                  <div style={premiumPanelStyle}>
+                    <h3>Saját PIN módosítása</h3>
+                    <p style={{ marginTop: 0 }}>Itt tudod módosítani a szolgáltatói belépési PIN-kódodat.</p>
+                    <input
+                      placeholder="Jelenlegi PIN"
+                      value={providerCurrentPin}
+                      onChange={(e) => setProviderCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      maxLength="4"
+                      style={premiumInlineInputStyle}
+                    />
+                    <input
+                      placeholder="Új PIN"
+                      value={providerNewPin}
+                      onChange={(e) => setProviderNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      maxLength="4"
+                      style={premiumInlineInputStyle}
+                    />
+                    <input
+                      placeholder="Új PIN még egyszer"
+                      value={providerNewPinAgain}
+                      onChange={(e) => setProviderNewPinAgain(e.target.value.replace(/\D/g, "").slice(0, 4))}
+                      maxLength="4"
+                      style={premiumInlineInputStyle}
+                    />
+                    <button onClick={changeProviderPin} style={providerSmallButtonStyle}>PIN módosítása</button>
+                  </div>
+                )}
+              </div>
+
+              <div style={premiumSettingsPanelStyle}>
+                <button
+                  onClick={() => setShowProviderServices(!showProviderServices)}
+                  style={premiumNeutralButtonStyle}
+                >
+                  {showProviderServices ? "Szolgáltatások elrejtése" : `Szolgáltatások kezelése (${(activeProvider.services || []).length})`}
+                </button>
+
+                {showProviderServices && (
+                  <>
+                    <h3>Szolgáltatások</h3>
+
+                    <input
+                      placeholder="Pl. Műköröm töltés"
+                      value={newServiceName}
+                      onChange={(e) => setNewServiceName(e.target.value)}
+                      style={premiumInlineInputStyle}
+                    />
+                    <button onClick={addService} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Hozzáadás</button>
+
+                    {(activeProvider.services || []).length === 0 && <p>Még nincs szolgáltatás megadva. A vendég így is tud foglalni megjegyzéssel.</p>}
+
+                    {(activeProvider.services || []).map((service) => (
+                      <div key={service} style={{ margin: "6px 0" }}>
+                        <b>{service}</b>
+                        <button onClick={() => removeService(service)} style={{ ...dangerButtonStyle, marginLeft: "10px" }}>Törlés</button>
+                      </div>
+                    ))}
+                  </>
+                )}
+              </div>
+
+              <div style={premiumSettingsPanelStyle}>
+                <button
+                  onClick={() => setShowProviderBlockedGuests(!showProviderBlockedGuests)}
+                  style={premiumNeutralButtonStyle}
+                >
+                  {showProviderBlockedGuests
+                    ? `Letiltott vendégek elrejtése (${(activeProvider.blockedEmails || []).length})`
+                    : `Letiltott vendégek megnyitása (${(activeProvider.blockedEmails || []).length})`}
+                </button>
+
+                {showProviderBlockedGuests && (
+                  <>
+                    <h3>Letiltott vendégek</h3>
+
+                    {(activeProvider.blockedEmails || []).length === 0 && <p>Nincs letiltott vendég.</p>}
+
+                    {(activeProvider.blockedEmails || []).map((email) => (
+                      <div key={email} style={{ margin: "6px 0" }}>
+                        <b>{email}</b>
+                        <button onClick={() => unblockGuestEmail(email)} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>
+                          Tiltás feloldása
+                        </button>
+                      </div>
+                    ))}
                   </>
                 )}
               </div>
