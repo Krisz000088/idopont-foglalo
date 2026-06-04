@@ -85,7 +85,7 @@ function App() {
   const [guestNewPin, setGuestNewPin] = useState("");
   const [guestNewPinAgain, setGuestNewPinAgain] = useState("");
   const [providerOverviewPanel, setProviderOverviewPanel] = useState("");
-  const [guestOverviewPanel, setGuestOverviewPanel] = useState("todayGuestBookings");
+  const [guestOverviewPanel, setGuestOverviewPanel] = useState("");
   const [showDeveloperTools, setShowDeveloperTools] = useState(false);
   const [showProviderSettings, setShowProviderSettings] = useState(false);
   const [showGuestSettings, setShowGuestSettings] = useState(false);
@@ -98,6 +98,11 @@ function App() {
   const [breakDay, setBreakDay] = useState("Hétfő");
   const [breakDate, setBreakDate] = useState("");
   const [breakType, setBreakType] = useState("weekly");
+  const [activeBreakPreset, setActiveBreakPreset] = useState("lunch");
+  const [breakfastBreakStart, setBreakfastBreakStart] = useState("09:30");
+  const [breakfastBreakEnd, setBreakfastBreakEnd] = useState("10:00");
+  const [lunchBreakStart, setLunchBreakStart] = useState("12:00");
+  const [lunchBreakEnd, setLunchBreakEnd] = useState("13:00");
   const lastHistoryKeyRef = useRef("");
 
   useEffect(() => localStorage.setItem("providers", JSON.stringify(providers)), [providers]);
@@ -366,6 +371,43 @@ function App() {
       console.error(error);
       alert("Nem sikerült automatikusan másolni. Jelöld ki kézzel a mezőt és nyomj Ctrl+C-t.");
     }
+  }
+
+  function updateBreakStartValue(value) {
+    setBreakStart(value);
+
+    if (activeBreakPreset === "breakfast") {
+      setBreakfastBreakStart(value);
+    }
+
+    if (activeBreakPreset === "lunch") {
+      setLunchBreakStart(value);
+    }
+  }
+
+  function updateBreakEndValue(value) {
+    setBreakEnd(value);
+
+    if (activeBreakPreset === "breakfast") {
+      setBreakfastBreakEnd(value);
+    }
+
+    if (activeBreakPreset === "lunch") {
+      setLunchBreakEnd(value);
+    }
+  }
+
+  function selectBreakPreset(preset) {
+    setActiveBreakPreset(preset);
+
+    if (preset === "breakfast") {
+      setBreakStart(breakfastBreakStart);
+      setBreakEnd(breakfastBreakEnd);
+      return;
+    }
+
+    setBreakStart(lunchBreakStart);
+    setBreakEnd(lunchBreakEnd);
   }
 
   async function sendEmailViaSupabase({ to, subject, text, html, type }) {
@@ -1716,6 +1758,8 @@ function App() {
       notifications: [],
       emailNotifications: providerEmailNotifications,
       pinLoginEnabled: true,
+      slotReminderEnabled: false,
+      slotReminderWeeks: 1,
     };
 
     setProviders([...providers, newProvider]);
@@ -1728,12 +1772,14 @@ function App() {
       vendegkod: normalizedGuestCode,
       email_ertesites: providerEmailNotifications,
       pin_belepes: true,
+      idopont_figyelmeztetes: false,
+      idopont_figyelmeztetes_hetek: 1,
     };
 
     let { error } = await supabase.from("szolgaltatok").insert([providerInsertRow]);
 
     if (error && (String(error.message || "").toLowerCase().includes("email_ertesites") || String(error.message || "").toLowerCase().includes("pin_belepes"))) {
-      const { email_ertesites, pin_belepes, ...fallbackProviderRow } = providerInsertRow;
+      const { email_ertesites, pin_belepes, idopont_figyelmeztetes, idopont_figyelmeztetes_hetek, ...fallbackProviderRow } = providerInsertRow;
       const fallbackResult = await supabase.from("szolgaltatok").insert([fallbackProviderRow]);
       error = fallbackResult.error;
     }
@@ -1773,6 +1819,8 @@ function App() {
       notifications: [],
       emailNotifications: row.email_ertesites ?? true,
       pinLoginEnabled: row.pin_belepes !== false,
+      slotReminderEnabled: row.idopont_figyelmeztetes === true,
+      slotReminderWeeks: Number(row.idopont_figyelmeztetes_hetek || 1),
     };
   }
 
@@ -1851,6 +1899,8 @@ function App() {
       blockedEmails: Array.isArray(found.blockedEmails) ? found.blockedEmails : [],
       emailNotifications: found.emailNotifications ?? true,
       pinLoginEnabled: found.pinLoginEnabled !== false,
+      slotReminderEnabled: found.slotReminderEnabled === true,
+      slotReminderWeeks: Number(found.slotReminderWeeks || 1),
     };
 
     setProviders((currentProviders) => {
@@ -1861,7 +1911,7 @@ function App() {
     });
     setActiveProvider(normalizedProvider);
     setProviderEmailNotifications(normalizedProvider.emailNotifications !== false);
-    setProviderOverviewPanel("todayBookings");
+    setProviderOverviewPanel("");
     setWorkDays(normalizedProvider.workDays || []);
     setWorkStart(normalizedProvider.workStart || "08:00");
     setWorkEnd(normalizedProvider.workEnd || "16:00");
@@ -2304,7 +2354,16 @@ function App() {
     const providerDbId = await getSupabaseProviderId(activeProvider);
     if (!providerDbId) return;
 
-    const column = field === "pinLoginEnabled" ? "pin_belepes" : "email_ertesites";
+    const providerPreferenceColumns = {
+      emailNotifications: "email_ertesites",
+      pinLoginEnabled: "pin_belepes",
+      slotReminderEnabled: "idopont_figyelmeztetes",
+      slotReminderWeeks: "idopont_figyelmeztetes_hetek",
+    };
+    const column = providerPreferenceColumns[field];
+
+    if (!column) return;
+
     const { error } = await supabase
       .from("szolgaltatok")
       .update({ [column]: value })
@@ -2359,12 +2418,14 @@ function App() {
       .update({
         email_ertesites: activeProvider.emailNotifications !== false,
         pin_belepes: activeProvider.pinLoginEnabled !== false,
+        idopont_figyelmeztetes: activeProvider.slotReminderEnabled === true,
+        idopont_figyelmeztetes_hetek: Number(activeProvider.slotReminderWeeks || 1),
       })
       .eq("id", providerDbId);
 
     if (error) {
       console.error(error);
-      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes és email_ertesites oszlopok léteznek-e Supabase-ben.");
+      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes, email_ertesites, idopont_figyelmeztetes és idopont_figyelmeztetes_hetek oszlopok léteznek-e Supabase-ben.");
       return;
     }
 
@@ -2517,7 +2578,7 @@ function App() {
       return [...withoutDuplicate, normalizedGuest];
     });
     setActiveGuest(normalizedGuest);
-    setGuestOverviewPanel("todayGuestBookings");
+    setGuestOverviewPanel("");
     setGuestEmailNotifications(normalizedGuest.emailNotifications !== false);
     setEditableGuestPhone(normalizedGuest.phone || "");
     setGuestLoginEmail("");
@@ -2948,6 +3009,60 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     alert(
       `Időpontok frissítve.\n\nÚj időpontok hozzáadva: ${addedSlotsCount}\nA meglévő foglalások és korábbi időpontok megmaradtak.${supabaseMessage}`
+    );
+  }
+
+  function getLastGeneratedSlotDate(provider) {
+    if (!provider || !Array.isArray(provider.slots) || provider.slots.length === 0) return "";
+
+    const generatedDates = provider.slots
+      .filter((slot) => slot && slot.date)
+      .map((slot) => slot.date)
+      .sort();
+
+    return generatedDates[generatedDates.length - 1] || "";
+  }
+
+  function getSlotReminderInfo(provider) {
+    if (!provider || provider.slotReminderEnabled !== true) return null;
+
+    const lastGeneratedDate = getLastGeneratedSlotDate(provider);
+    const reminderWeeks = Math.max(1, Number(provider.slotReminderWeeks || 1));
+
+    if (!lastGeneratedDate) {
+      return {
+        type: "missing",
+        text: "Még nincs előre generált időpontod. Generálj előre időpontokat, hogy a vendégek tudjanak nálad foglalni.",
+      };
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const lastDate = new Date(`${lastGeneratedDate}T00:00:00`);
+
+    if (Number.isNaN(lastDate.getTime())) return null;
+
+    const daysLeft = Math.ceil((lastDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const thresholdDays = reminderWeeks * 7;
+
+    if (daysLeft > thresholdDays) return null;
+
+    return {
+      type: "warning",
+      text: `Már csak kb. ${Math.max(0, daysLeft)} napra van előre időpont generálva. Generálj előre időpontokat, hogy a vendégek időben tudjanak nálad helyet foglalni.`,
+    };
+  }
+
+  function renderSlotGenerationReminder(provider) {
+    const reminderInfo = getSlotReminderInfo(provider);
+
+    if (!reminderInfo) return null;
+
+    return (
+      <div style={{ ...premiumPanelStyle, border: "2px solid #b8860b", background: "linear-gradient(180deg, #fff8df 0%, #ffffff 100%)" }}>
+        <h3 style={{ marginTop: 0, color: "#7a5600" }}>Időpont generálási figyelmeztetés</h3>
+        <p style={{ marginBottom: 0 }}>{reminderInfo.text}</p>
+      </div>
     );
   }
 
@@ -5706,7 +5821,7 @@ function renderProviderOverviewPanel(provider, panel) {
     setShowGuestMessages(false);
     setShowGuestNotifications(false);
     setShowGuestSettings(false);
-    setGuestOverviewPanel("todayGuestBookings");
+    setGuestOverviewPanel("");
     setMode("");
 
     alert(guestDbId ? "A vendég fiók és minden kapcsolódó adata helyben és Supabase-ből is törölve lett." : "A vendég fiók helyben törölve lett.");
@@ -7100,40 +7215,19 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
             <div style={premiumPageStyle}>
               <h2 style={{ marginTop: 0, color: "#243b55" }}>{activeProvider.name}</h2>
               <p style={premiumHeaderTextStyle}>Email: <b>{activeProvider.email || "nincs megadva"}</b></p>
-              <p style={premiumHeaderTextStyle}>Vendégkód: <b>{activeProvider.guestCode}</b></p>
+              <p style={premiumHeaderTextStyle}>
+                Vendégkód: <b>{activeProvider.guestCode}</b>
+                <button
+                  onClick={() => copyToClipboard(activeProvider.guestCode)}
+                  title="Vendégkód másolása"
+                  style={{ ...premiumNeutralButtonStyle, marginLeft: "8px", padding: "6px 10px" }}
+                >
+                  📋
+                </button>
+              </p>
 
               {renderProviderStats(activeProvider)}
-
-              <div style={premiumPanelStyle}>
-                <h3 style={{ marginTop: 0 }}>Mai foglalások</h3>
-                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).length === 0 && (
-                  <p style={premiumHintStyle}>Ma még nincs foglalt időpont.</p>
-                )}
-                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).map((booking) => (
-                  <div key={booking.id} style={premiumListCardStyle}>
-                    <b>{booking.time}</b> — {booking.guestName || "Vendég"}
-                    {booking.service && (
-                      <>
-                        <br />
-                        Szolgáltatás: {booking.service}
-                      </>
-                    )}
-                    {booking.guestPhone && (
-                      <>
-                        <br />
-                        Telefon: {booking.guestPhone}
-                              {renderPhoneCallLink(booking.guestPhone)}
-                      </>
-                    )}
-                    {booking.note && (
-                      <>
-                        <br />
-                        Megjegyzés: {booking.note}
-                      </>
-                    )}
-                  </div>
-                ))}
-              </div>
+              {renderSlotGenerationReminder(activeProvider)}
 
               <button onClick={() => setShowProviderSettings(!showProviderSettings)} style={{ ...providerSmallButtonStyle, margin: "12px 0" }}>
                 {showProviderSettings ? "Beállítások bezárása" : "Beállítások"}
@@ -7165,6 +7259,34 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       {" "}{activeProvider.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
                     </label>
                   </div>
+
+                  <div style={premiumToggleRowStyle}>
+                    <span>Figyelmeztetés kevés előre generált időpontnál</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={activeProvider.slotReminderEnabled === true}
+                        onChange={(e) => updateProviderPreference("slotReminderEnabled", e.target.checked)}
+                      />
+                      {" "}{activeProvider.slotReminderEnabled === true ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+
+                  {activeProvider.slotReminderEnabled === true && (
+                    <div style={{ marginTop: "10px", marginBottom: "10px" }}>
+                      <label style={premiumLabelStyle}>Hány héttel előtte figyelmeztessen?</label>
+                      <select
+                        value={activeProvider.slotReminderWeeks || 1}
+                        onChange={(e) => updateProviderPreference("slotReminderWeeks", Number(e.target.value))}
+                        style={premiumSelectStyle}
+                      >
+                        <option value="1">1 hét</option>
+                        <option value="2">2 hét</option>
+                        <option value="3">3 hét</option>
+                        <option value="4">4 hét</option>
+                      </select>
+                    </div>
+                  )}
 
                   <button onClick={saveActiveProviderSettings} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
                     Beállítások mentése
@@ -7480,8 +7602,25 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       <input type="date" value={breakDate} onChange={(e) => setBreakDate(e.target.value)} style={premiumInlineInputStyle} />
                     )}
 
-                    <input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={premiumInlineInputStyle} />
-                    <input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={premiumInlineInputStyle} />
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", margin: "10px 0" }}>
+                      <button
+                        type="button"
+                        onClick={() => selectBreakPreset("breakfast")}
+                        style={{ ...premiumNeutralButtonStyle, border: activeBreakPreset === "breakfast" ? "2px solid #b8860b" : premiumNeutralButtonStyle.border }}
+                      >
+                        Reggeli szünet {breakfastBreakStart}–{breakfastBreakEnd}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => selectBreakPreset("lunch")}
+                        style={{ ...premiumNeutralButtonStyle, border: activeBreakPreset === "lunch" ? "2px solid #b8860b" : premiumNeutralButtonStyle.border }}
+                      >
+                        Ebédszünet {lunchBreakStart}–{lunchBreakEnd}
+                      </button>
+                    </div>
+
+                    <input type="time" value={breakStart} onChange={(e) => updateBreakStartValue(e.target.value)} style={premiumInlineInputStyle} />
+                    <input type="time" value={breakEnd} onChange={(e) => updateBreakEndValue(e.target.value)} style={premiumInlineInputStyle} />
                     <button onClick={addProviderBreak} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Szünet hozzáadása</button>
 
                     {(activeProvider.breaks || []).length === 0 && <p>Nincs napközbeni szünet megadva.</p>}
@@ -7705,6 +7844,8 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               <h2 style={{ marginTop: 0, color: "#5b4164" }}>Belépve: {activeGuest.name}</h2>
               {activeGuest.email && <p style={premiumHeaderTextStyle}>Email: <b>{activeGuest.email}</b></p>}
               {activeGuest.phone && <p style={premiumHeaderTextStyle}>Telefonszám: <b>{activeGuest.phone}</b></p>}
+
+              {renderGuestStats(activeGuest)}
 
               <button onClick={() => setShowGuestSettings(!showGuestSettings)} style={{ ...guestSmallButtonStyle, margin: "12px 0" }}>
                 {showGuestSettings ? "Beállítások bezárása" : "Beállítások"}
@@ -7933,6 +8074,14 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       return;
                     }
 
+                    if (selectedProvider && idsEqual(selectedProvider.id, fresh.id)) {
+                      setSelectedProvider(null);
+                      setSelectedSlot(null);
+                      setSelectedCalendarDate("");
+                      setSelectedService("");
+                      return;
+                    }
+
                     setSelectedProvider(fresh);
                     setSelectedSlot(null);
                     setSelectedCalendarDate("");
@@ -8018,10 +8167,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   </button>
                 </>
               )}
-
-              {renderGuestStats(activeGuest)}
-
-
 
               <br />
               <button onClick={() => setActiveGuest(null)} style={secondaryGhostButtonStyle}>Vendég kijelentkezés</button>
