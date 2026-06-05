@@ -557,16 +557,46 @@ function App() {
     });
   }
 
-  function sendDeveloperMessage(senderType, senderName, senderEmail) {
+  async function sendDeveloperMessage(senderType, senderName, senderEmail) {
     const text = developerMessageText.trim();
+    const developerEmail = "krisz000088@gmail.com";
+    const senderTypeLabel = senderType === "provider" ? "Szolgáltató" : "Vendég";
 
     if (!text) {
       alert("Írj be egy üzenetet.");
       return;
     }
 
-    console.log("Üzenet a fejlesztőnek:", { senderType, senderName, senderEmail, text });
-    alert("Az üzenet előkészítve. Az éles email küldést később kötjük be, addig a böngésző Console-ban látható.");
+    const emailResult = await sendEmailViaSupabase({
+      to: developerEmail,
+      subject: `Üzenet a fejlesztőnek - ${senderTypeLabel}: ${senderName || "Ismeretlen feladó"}`,
+      type: "developer_message",
+      text: buildPlainTextEmail([
+        "Új üzenet érkezett a fejlesztőnek.",
+        `Feladó típusa: ${senderTypeLabel}`,
+        `Feladó neve: ${senderName || "-"}`,
+        `Feladó email címe: ${senderEmail || "-"}`,
+        "",
+        "Üzenet:",
+        text,
+      ]),
+      html: buildHtmlEmail("Új üzenet a fejlesztőnek", [
+        `Feladó típusa: ${senderTypeLabel}`,
+        `Feladó neve: ${senderName || "-"}`,
+        `Feladó email címe: ${senderEmail || "-"}`,
+        "",
+        "Üzenet:",
+        text,
+      ]),
+    });
+
+    if (!emailResult.ok) {
+      console.error("Fejlesztői üzenet email küldési hiba:", emailResult);
+      alert("Az üzenetet nem sikerült elküldeni emailben. Ellenőrizd a Supabase send-email function beállításait.");
+      return;
+    }
+
+    alert("Az üzenet emailben elküldve a fejlesztőnek.");
     setDeveloperMessageText("");
     setShowDeveloperContact(false);
   }
