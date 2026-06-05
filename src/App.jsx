@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
 import HomePage from "./components/HomePage";
 import ForgotPassword from "./components/ForgotPassword";
+import DeveloperContact from "./components/DeveloperContact";
 
 const days = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 
@@ -7374,15 +7375,18 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                     Beállítások mentése
                   </button>
 
-                  <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
-                    Üzenet a fejlesztőnek
-                  </button>
-                  {showDeveloperContact && (
-                    <div style={{ marginTop: "12px" }}>
-                      <textarea placeholder="Írd le, mit szeretnél jelezni..." value={developerMessageText} onChange={(e) => setDeveloperMessageText(e.target.value)} style={{ ...premiumInputStyle, minHeight: "90px" }} />
-                      <button onClick={() => sendDeveloperMessage("provider", activeProvider.name, activeProvider.email)} style={providerSmallButtonStyle}>Üzenet elküldése</button>
-                    </div>
-                  )}
+                  <DeveloperContact
+                    senderType="provider"
+                    senderName={activeProvider.name}
+                    senderEmail={activeProvider.email}
+                    showDeveloperContact={showDeveloperContact}
+                    setShowDeveloperContact={setShowDeveloperContact}
+                    developerMessageText={developerMessageText}
+                    setDeveloperMessageText={setDeveloperMessageText}
+                    sendDeveloperMessage={sendDeveloperMessage}
+                    buttonStyle={providerSmallButtonStyle}
+                    inputStyle={premiumInputStyle}
+                  />
 
                   <div style={{ marginTop: "14px", paddingTop: "14px", borderTop: "1px solid rgba(98, 84, 111, 0.12)" }}>
                     <button onClick={deleteProviderAccount} style={dangerButtonStyle}>
@@ -7804,15 +7808,18 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                     Beállítások mentése
                   </button>
 
-                  <button onClick={() => setShowDeveloperContact(!showDeveloperContact)} style={{ ...guestSmallButtonStyle, marginTop: "12px" }}>
-                    Üzenet a fejlesztőnek
-                  </button>
-                  {showDeveloperContact && (
-                    <div style={{ marginTop: "12px" }}>
-                      <textarea placeholder="Írd le, mit szeretnél jelezni..." value={developerMessageText} onChange={(e) => setDeveloperMessageText(e.target.value)} style={{ ...premiumInputStyle, minHeight: "90px" }} />
-                      <button onClick={() => sendDeveloperMessage("guest", activeGuest.name, activeGuest.email)} style={guestSmallButtonStyle}>Üzenet elküldése</button>
-                    </div>
-                  )}
+                  <DeveloperContact
+                    senderType="guest"
+                    senderName={activeGuest.name}
+                    senderEmail={activeGuest.email}
+                    showDeveloperContact={showDeveloperContact}
+                    setShowDeveloperContact={setShowDeveloperContact}
+                    developerMessageText={developerMessageText}
+                    setDeveloperMessageText={setDeveloperMessageText}
+                    sendDeveloperMessage={sendDeveloperMessage}
+                    buttonStyle={guestSmallButtonStyle}
+                    inputStyle={premiumInputStyle}
+                  />
                 </div>
               )}
 
