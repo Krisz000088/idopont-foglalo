@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
+import { buildHtmlEmail, buildPlainTextEmail } from "./utils/emailHelpers";
 import HomePage from "./components/HomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import DeveloperContact from "./components/DeveloperContact";
@@ -408,32 +409,7 @@ function App() {
     }
   }
 
-  function buildPlainTextEmail(lines) {
-    return lines.filter((line) => line !== null && line !== undefined).join("\n");
-  }
-
-  function buildHtmlEmail(title, lines) {
-    const safeLines = lines
-      .filter((line) => line !== null && line !== undefined)
-      .map((line) =>
-        String(line)
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")
-      );
-
-    return `
-      <div style="font-family: Arial, sans-serif; line-height: 1.5; color: #222;">
-        <h2 style="margin-bottom: 12px;">${String(title || "Értesítés")
-          .replaceAll("&", "&amp;")
-          .replaceAll("<", "&lt;")
-          .replaceAll(">", "&gt;")}</h2>
-        ${safeLines.map((line) => `<p style="margin: 6px 0;">${line}</p>`).join("")}
-      </div>
-    `;
-  }
-
-  async function sendBookingCreatedEmails({ booking, provider, guest }) {
+async function sendBookingCreatedEmails({ booking, provider, guest }) {
     const guestEmailResult = await sendEmailViaSupabase({
       to: guest?.email || booking.guestEmail,
       subject: `Foglalás visszaigazolás - ${booking.date} ${booking.time}`,
