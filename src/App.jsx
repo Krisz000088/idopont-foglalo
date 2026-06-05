@@ -13,6 +13,7 @@ function App() {
 
   const [providerName, setProviderName] = useState("");
   const [providerEmail, setProviderEmail] = useState("");
+  const [providerPhone, setProviderPhone] = useState("");
   const [providerPin, setProviderPin] = useState("");
   const [guestCode, setGuestCode] = useState("");
   const [newGuestCode, setNewGuestCode] = useState("");
@@ -98,11 +99,6 @@ function App() {
   const [breakDay, setBreakDay] = useState("Hétfő");
   const [breakDate, setBreakDate] = useState("");
   const [breakType, setBreakType] = useState("weekly");
-  const [activeBreakPreset, setActiveBreakPreset] = useState("lunch");
-  const [breakfastBreakStart, setBreakfastBreakStart] = useState("09:30");
-  const [breakfastBreakEnd, setBreakfastBreakEnd] = useState("10:00");
-  const [lunchBreakStart, setLunchBreakStart] = useState("12:00");
-  const [lunchBreakEnd, setLunchBreakEnd] = useState("13:00");
   const lastHistoryKeyRef = useRef("");
 
   useEffect(() => localStorage.setItem("providers", JSON.stringify(providers)), [providers]);
@@ -371,43 +367,6 @@ function App() {
       console.error(error);
       alert("Nem sikerült automatikusan másolni. Jelöld ki kézzel a mezőt és nyomj Ctrl+C-t.");
     }
-  }
-
-  function updateBreakStartValue(value) {
-    setBreakStart(value);
-
-    if (activeBreakPreset === "breakfast") {
-      setBreakfastBreakStart(value);
-    }
-
-    if (activeBreakPreset === "lunch") {
-      setLunchBreakStart(value);
-    }
-  }
-
-  function updateBreakEndValue(value) {
-    setBreakEnd(value);
-
-    if (activeBreakPreset === "breakfast") {
-      setBreakfastBreakEnd(value);
-    }
-
-    if (activeBreakPreset === "lunch") {
-      setLunchBreakEnd(value);
-    }
-  }
-
-  function selectBreakPreset(preset) {
-    setActiveBreakPreset(preset);
-
-    if (preset === "breakfast") {
-      setBreakStart(breakfastBreakStart);
-      setBreakEnd(breakfastBreakEnd);
-      return;
-    }
-
-    setBreakStart(lunchBreakStart);
-    setBreakEnd(lunchBreakEnd);
   }
 
   async function sendEmailViaSupabase({ to, subject, text, html, type }) {
@@ -1743,6 +1702,7 @@ function App() {
       id: Date.now(),
       name: providerName,
       email: providerEmail,
+      phone: providerPhone,
       pin: providerPin,
       guestCode: normalizedGuestCode,
       workDays: [],
@@ -1758,8 +1718,6 @@ function App() {
       notifications: [],
       emailNotifications: providerEmailNotifications,
       pinLoginEnabled: true,
-      slotReminderEnabled: false,
-      slotReminderWeeks: 1,
     };
 
     setProviders([...providers, newProvider]);
@@ -1768,18 +1726,21 @@ function App() {
       nev: providerName,
       profilnev: "",
       email: providerEmail,
+      phone: providerPhone,
       pin: providerPin,
       vendegkod: normalizedGuestCode,
       email_ertesites: providerEmailNotifications,
       pin_belepes: true,
-      idopont_figyelmeztetes: false,
-      idopont_figyelmeztetes_hetek: 1,
     };
 
     let { error } = await supabase.from("szolgaltatok").insert([providerInsertRow]);
 
-    if (error && (String(error.message || "").toLowerCase().includes("email_ertesites") || String(error.message || "").toLowerCase().includes("pin_belepes"))) {
-      const { email_ertesites, pin_belepes, idopont_figyelmeztetes, idopont_figyelmeztetes_hetek, ...fallbackProviderRow } = providerInsertRow;
+    if (error && (
+      String(error.message || "").toLowerCase().includes("telefon") ||
+      String(error.message || "").toLowerCase().includes("email_ertesites") ||
+      String(error.message || "").toLowerCase().includes("pin_belepes")
+    )) {
+      const { telefon, email_ertesites, pin_belepes, ...fallbackProviderRow } = providerInsertRow;
       const fallbackResult = await supabase.from("szolgaltatok").insert([fallbackProviderRow]);
       error = fallbackResult.error;
     }
@@ -1793,6 +1754,7 @@ function App() {
 
     setProviderName("");
     setProviderEmail("");
+    setProviderPhone("");
     setProviderPin("");
     setGuestCode("");
     setLoginUsername(providerEmail);
@@ -1804,6 +1766,7 @@ function App() {
       id: row.id,
       name: row.nev || "",
       email: row.email || "",
+      phone: row.telefon || "",
       pin: row.pin || "",
       guestCode: row.vendegkod || "",
       workDays: [],
@@ -1819,8 +1782,6 @@ function App() {
       notifications: [],
       emailNotifications: row.email_ertesites ?? true,
       pinLoginEnabled: row.pin_belepes !== false,
-      slotReminderEnabled: row.idopont_figyelmeztetes === true,
-      slotReminderWeeks: Number(row.idopont_figyelmeztetes_hetek || 1),
     };
   }
 
@@ -1899,8 +1860,6 @@ function App() {
       blockedEmails: Array.isArray(found.blockedEmails) ? found.blockedEmails : [],
       emailNotifications: found.emailNotifications ?? true,
       pinLoginEnabled: found.pinLoginEnabled !== false,
-      slotReminderEnabled: found.slotReminderEnabled === true,
-      slotReminderWeeks: Number(found.slotReminderWeeks || 1),
     };
 
     setProviders((currentProviders) => {
@@ -1911,7 +1870,7 @@ function App() {
     });
     setActiveProvider(normalizedProvider);
     setProviderEmailNotifications(normalizedProvider.emailNotifications !== false);
-    setProviderOverviewPanel("");
+    setProviderOverviewPanel("todayBookings");
     setWorkDays(normalizedProvider.workDays || []);
     setWorkStart(normalizedProvider.workStart || "08:00");
     setWorkEnd(normalizedProvider.workEnd || "16:00");
@@ -2354,16 +2313,7 @@ function App() {
     const providerDbId = await getSupabaseProviderId(activeProvider);
     if (!providerDbId) return;
 
-    const providerPreferenceColumns = {
-      emailNotifications: "email_ertesites",
-      pinLoginEnabled: "pin_belepes",
-      slotReminderEnabled: "idopont_figyelmeztetes",
-      slotReminderWeeks: "idopont_figyelmeztetes_hetek",
-    };
-    const column = providerPreferenceColumns[field];
-
-    if (!column) return;
-
+    const column = field === "pinLoginEnabled" ? "pin_belepes" : "email_ertesites";
     const { error } = await supabase
       .from("szolgaltatok")
       .update({ [column]: value })
@@ -2418,14 +2368,12 @@ function App() {
       .update({
         email_ertesites: activeProvider.emailNotifications !== false,
         pin_belepes: activeProvider.pinLoginEnabled !== false,
-        idopont_figyelmeztetes: activeProvider.slotReminderEnabled === true,
-        idopont_figyelmeztetes_hetek: Number(activeProvider.slotReminderWeeks || 1),
       })
       .eq("id", providerDbId);
 
     if (error) {
       console.error(error);
-      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes, email_ertesites, idopont_figyelmeztetes és idopont_figyelmeztetes_hetek oszlopok léteznek-e Supabase-ben.");
+      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes és email_ertesites oszlopok léteznek-e Supabase-ben.");
       return;
     }
 
@@ -2643,8 +2591,9 @@ function App() {
     const bookingsOnDate = getBookingsForProviderDate(activeProvider, exceptionDate);
 
     if (bookingsOnDate.length > 0) {
+      const bookingNames = bookingsOnDate.map((booking) => booking.guestName || "Vendég").join(", ");
       const confirmed = confirm(
-        `Vigyázz, erre a napra már ${bookingsOnDate.length} aktív foglalás van. Biztosan nem dolgozik napnak jelölöd?
+        `Vigyázz, erre a napra már ${bookingsOnDate.length} aktív foglalás van: ${bookingNames}. Biztosan nem dolgozik napnak jelölöd?
 
 Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést kapnak.`
       );
@@ -2764,8 +2713,10 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     alert("Kivétel nap hozzáadva helyben. Supabase mentéshez jelentkezz be Supabase-ben létező szolgáltatóval.");
   }
 
-  function removeExceptionDate(dateToRemove) {
+  async function removeExceptionDate(dateToRemove) {
     if (!activeProvider) return;
+
+    if (!confirm(`${formatDateHu(dateToRemove)} újra munkanap legyen?`)) return;
 
     const updatedProviders = providers.map((provider) =>
       provider.id === activeProvider.id
@@ -2778,6 +2729,26 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     setProviders(updatedProviders);
     setActiveProvider(updatedProviders.find((p) => p.id === activeProvider.id));
+
+    const providerDbId = await getSupabaseProviderId(activeProvider);
+    if (!providerDbId) {
+      alert("A kivétel nap helyben visszavonva.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("kivetel_napok")
+      .delete()
+      .eq("szolgaltato_id", providerDbId)
+      .eq("datum", dateToRemove);
+
+    if (error) {
+      console.error(error);
+      alert("A kivétel nap helyben visszavonva, de Supabase-ből nem sikerült törölni.");
+      return;
+    }
+
+    alert("A nap újra munkanapként jelenik meg.");
   }
   function timeToMinutes(time) {
     const [hour = 0, minute = 0] = String(time || "00:00").split(":").map(Number);
@@ -3009,60 +2980,6 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     alert(
       `Időpontok frissítve.\n\nÚj időpontok hozzáadva: ${addedSlotsCount}\nA meglévő foglalások és korábbi időpontok megmaradtak.${supabaseMessage}`
-    );
-  }
-
-  function getLastGeneratedSlotDate(provider) {
-    if (!provider || !Array.isArray(provider.slots) || provider.slots.length === 0) return "";
-
-    const generatedDates = provider.slots
-      .filter((slot) => slot && slot.date)
-      .map((slot) => slot.date)
-      .sort();
-
-    return generatedDates[generatedDates.length - 1] || "";
-  }
-
-  function getSlotReminderInfo(provider) {
-    if (!provider || provider.slotReminderEnabled !== true) return null;
-
-    const lastGeneratedDate = getLastGeneratedSlotDate(provider);
-    const reminderWeeks = Math.max(1, Number(provider.slotReminderWeeks || 1));
-
-    if (!lastGeneratedDate) {
-      return {
-        type: "missing",
-        text: "Még nincs előre generált időpontod. Generálj előre időpontokat, hogy a vendégek tudjanak nálad foglalni.",
-      };
-    }
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const lastDate = new Date(`${lastGeneratedDate}T00:00:00`);
-
-    if (Number.isNaN(lastDate.getTime())) return null;
-
-    const daysLeft = Math.ceil((lastDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    const thresholdDays = reminderWeeks * 7;
-
-    if (daysLeft > thresholdDays) return null;
-
-    return {
-      type: "warning",
-      text: `Már csak kb. ${Math.max(0, daysLeft)} napra van előre időpont generálva. Generálj előre időpontokat, hogy a vendégek időben tudjanak nálad helyet foglalni.`,
-    };
-  }
-
-  function renderSlotGenerationReminder(provider) {
-    const reminderInfo = getSlotReminderInfo(provider);
-
-    if (!reminderInfo) return null;
-
-    return (
-      <div style={{ ...premiumPanelStyle, border: "2px solid #b8860b", background: "linear-gradient(180deg, #fff8df 0%, #ffffff 100%)" }}>
-        <h3 style={{ marginTop: 0, color: "#7a5600" }}>Időpont generálási figyelmeztetés</h3>
-        <p style={{ marginBottom: 0 }}>{reminderInfo.text}</p>
-      </div>
     );
   }
 
@@ -3414,14 +3331,36 @@ function renderProviderOverviewPanel(provider, panel) {
             Itt csak a vendégek valódi, kézzel írt üzenetei jelennek meg. Lemondás és módosítás az Értesítések alatt lesz.
           </p>
           {guestMessages.length === 0 && <p>Nincs vendégtől érkezett üzenet.</p>}
-          {guestMessages.map((message) => (
-            <div key={getProviderMessageKey(provider.id, message)} style={smallCardStyle}>
-              <b>{message.fromName || "Vendég"}</b>
-              {message.date && message.time && <> — {formatDateHu(message.date)} {message.time}</>}
-              <br />
-              Üzenet: {message.text}
-            </div>
-          ))}
+          {guestMessages.map((message) => {
+            const replyGuest = guests.find((guest) => idsEqual(guest.id, message.guestId)) || {
+              id: message.guestId,
+              name: message.guestName || message.fromName || "Vendég",
+              email: message.guestEmail || "",
+            };
+            const replyKey = `reply-${message.id}`;
+
+            return (
+              <div key={getProviderMessageKey(provider.id, message)} style={smallCardStyle}>
+                <b>{message.fromName || "Vendég"}</b>
+                {message.date && message.time && <> — {formatDateHu(message.date)} {message.time}</>}
+                <br />
+                Üzenet: {message.text}
+
+                <div style={{ marginTop: "10px" }}>
+                  <textarea
+                    placeholder={`Válasz ${replyGuest.name || "vendég"}nak...`}
+                    value={providerMessageTexts[replyKey] || ""}
+                    onChange={(e) => setProviderMessageTexts({ ...providerMessageTexts, [replyKey]: e.target.value })}
+                    style={{ ...premiumInlineInputStyle, width: "100%", minHeight: "70px", resize: "vertical" }}
+                  />
+                  <br />
+                  <button onClick={() => sendProviderDirectMessageToGuest(replyGuest, replyKey, message)} style={providerSmallButtonStyle}>
+                    Válasz küldése
+                  </button>
+                </div>
+              </div>
+            );
+          })}
         </div>
       );
     }
@@ -4034,6 +3973,20 @@ function renderProviderOverviewPanel(provider, panel) {
             <p>Állapot: <b style={{ color: selectedGuestBlocked ? "#b00020" : "#1b5e20" }}>{selectedGuestBlocked ? "tiltott" : "aktív"}</b></p>
             <p>Email: <b>{selectedGuest.email || "nincs megadva"}</b></p>
             <p>Telefon: <b>{selectedGuest.phone || "nincs megadva"}</b>{selectedGuest.phone && renderPhoneCallLink(selectedGuest.phone)}</p>
+
+            <div style={{ ...premiumPanelStyle, marginTop: "12px", background: "white" }}>
+              <h4 style={{ marginTop: 0 }}>Üzenet írása {selectedGuest.name || "vendég"}nak</h4>
+              <textarea
+                placeholder="Írd ide az üzenetet..."
+                value={providerMessageTexts[`registered-${selectedGuest.id}`] || ""}
+                onChange={(e) => setProviderMessageTexts({ ...providerMessageTexts, [`registered-${selectedGuest.id}`]: e.target.value })}
+                style={{ ...premiumInlineInputStyle, width: "100%", minHeight: "80px", resize: "vertical" }}
+              />
+              <br />
+              <button onClick={() => sendProviderDirectMessageToGuest(selectedGuest, `registered-${selectedGuest.id}`)} style={providerSmallButtonStyle}>
+                Üzenet küldése {selectedGuest.name || "vendég"}nak
+              </button>
+            </div>
 
             <div
               style={{
@@ -5038,6 +4991,78 @@ function renderProviderOverviewPanel(provider, panel) {
     });
 
     setProviderMessageTexts({ ...providerMessageTexts, [slot.id]: "" });
+
+    const emailSuffix = emailResult.ok
+      ? " Email értesítés elküldve."
+      : " Figyelem: email értesítést nem sikerült küldeni.";
+
+    if (supabaseMessageResult.ok) {
+      alert(`Üzenet elküldve a vendégnek és Supabase-be is elmentve.${emailSuffix}`);
+    } else {
+      alert(`Üzenet elküldve a vendégnek. Figyelem: Supabase-be nem sikerült menteni.${emailSuffix}`);
+    }
+  }
+
+  async function sendProviderDirectMessageToGuest(guest, textKey, relatedMessage = {}) {
+    if (!activeProvider || !guest) return;
+
+    const text = (providerMessageTexts[textKey] || "").trim();
+
+    if (!text) {
+      alert("Írj üzenetet a vendégnek.");
+      return;
+    }
+
+    const newMessage = {
+      id: Date.now(),
+      providerId: activeProvider.id,
+      providerName: activeProvider.name,
+      guestId: guest.id,
+      guestName: guest.name,
+      guestEmail: guest.email || "",
+      slotId: relatedMessage.slotId || "",
+      date: relatedMessage.date || "",
+      time: relatedMessage.time || "",
+      from: "provider",
+      fromName: activeProvider.name,
+      toName: guest.name || "Vendég",
+      text,
+      type: "message",
+    };
+
+    setMessages([newMessage, ...messages]);
+
+    const updatedGuests = guests.map((guestItem) =>
+      idsEqual(guestItem.id, guest.id)
+        ? {
+            ...guestItem,
+            notifications: [
+              {
+                id: Date.now(),
+                text: `${activeProvider.name} üzenetet küldött neked.`,
+                message: text,
+              },
+              ...(guestItem.notifications || []),
+            ],
+          }
+        : guestItem
+    );
+
+    setGuests(updatedGuests);
+    refreshGuestViews(updatedGuests, guest.id);
+
+    const supabaseMessageResult = await saveMessageToSupabase(newMessage, {
+      provider: activeProvider,
+      guest,
+      slot: null,
+    });
+
+    const emailResult = await sendMessageNotificationEmail({
+      message: newMessage,
+      recipientEmail: guest.email,
+    });
+
+    setProviderMessageTexts({ ...providerMessageTexts, [textKey]: "" });
 
     const emailSuffix = emailResult.ok
       ? " Email értesítés elküldve."
@@ -6437,6 +6462,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
     setProviderName("");
     setProviderEmail("");
+    setProviderPhone("");
     setProviderPin("");
     setGuestCode("");
     setNewGuestCode("");
@@ -7018,26 +7044,27 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
   return (
     <div style={appShellStyle} translate="no" className="notranslate" lang="hu">
       <h1 style={premiumTitleStyle}>Időpont Foglaló</h1>
+      <div style={{ ...premiumFormHeaderLineStyle, width: "110px", height: "5px", margin: "0 auto 24px", background: "linear-gradient(90deg, rgba(36,59,85,0), #243b55, #7f5a83, rgba(127,90,131,0))" }}></div>
 
       {!mode && (
         <>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", marginTop: "18px" }}>
-            <button onClick={() => setMode("createProvider")} style={providerHomeButtonStyle}>
-              Szolgáltató regisztráció
-            </button>
-
             <button onClick={() => setMode("providerLogin")} style={providerHomeButtonStyle}>
               Szolgáltató belépés
             </button>
 
-            <div style={{ height: "8px" }} />
-
-            <button onClick={() => setMode("createGuest")} style={guestHomeButtonStyle}>
-              Vendég regisztráció
+            <button onClick={() => setMode("createProvider")} style={providerHomeButtonStyle}>
+              Szolgáltató regisztráció
             </button>
+
+            <div style={{ height: "8px" }} />
 
             <button onClick={() => setMode("guestLogin")} style={guestHomeButtonStyle}>
               Vendég belépés
+            </button>
+
+            <button onClick={() => setMode("createGuest")} style={guestHomeButtonStyle}>
+              Vendég regisztráció
             </button>
 
             <button onClick={() => setMode("forgotLogin")} style={forgotPasswordLinkStyle}>
@@ -7154,6 +7181,16 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
           </div>
 
           <div style={premiumFieldGroupStyle}>
+            <label style={premiumLabelStyle}>Telefonszám <span style={{ fontWeight: 400, color: "#82758d" }}>(nem kötelező)</span></label>
+            <input
+              style={premiumInputStyle}
+              placeholder="+43..."
+              value={providerPhone}
+              onChange={(e) => setProviderPhone(e.target.value)}
+            />
+          </div>
+
+          <div style={premiumFieldGroupStyle}>
             <label style={premiumLabelStyle}>PIN</label>
             <input
               style={premiumInputStyle}
@@ -7215,19 +7252,40 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
             <div style={premiumPageStyle}>
               <h2 style={{ marginTop: 0, color: "#243b55" }}>{activeProvider.name}</h2>
               <p style={premiumHeaderTextStyle}>Email: <b>{activeProvider.email || "nincs megadva"}</b></p>
-              <p style={premiumHeaderTextStyle}>
-                Vendégkód: <b>{activeProvider.guestCode}</b>
-                <button
-                  onClick={() => copyToClipboard(activeProvider.guestCode)}
-                  title="Vendégkód másolása"
-                  style={{ ...premiumNeutralButtonStyle, marginLeft: "8px", padding: "6px 10px" }}
-                >
-                  📋
-                </button>
-              </p>
+              <p style={premiumHeaderTextStyle}>Vendégkód: <b>{activeProvider.guestCode}</b></p>
 
               {renderProviderStats(activeProvider)}
-              {renderSlotGenerationReminder(activeProvider)}
+
+              <div style={premiumPanelStyle}>
+                <h3 style={{ marginTop: 0 }}>Mai foglalások</h3>
+                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).length === 0 && (
+                  <p style={premiumHintStyle}>Ma még nincs foglalt időpont.</p>
+                )}
+                {getBookingsForProviderDate(activeProvider, formatDate(new Date())).map((booking) => (
+                  <div key={booking.id} style={premiumListCardStyle}>
+                    <b>{booking.time}</b> — {booking.guestName || "Vendég"}
+                    {booking.service && (
+                      <>
+                        <br />
+                        Szolgáltatás: {booking.service}
+                      </>
+                    )}
+                    {booking.guestPhone && (
+                      <>
+                        <br />
+                        Telefon: {booking.guestPhone}
+                              {renderPhoneCallLink(booking.guestPhone)}
+                      </>
+                    )}
+                    {booking.note && (
+                      <>
+                        <br />
+                        Megjegyzés: {booking.note}
+                      </>
+                    )}
+                  </div>
+                ))}
+              </div>
 
               <button onClick={() => setShowProviderSettings(!showProviderSettings)} style={{ ...providerSmallButtonStyle, margin: "12px 0" }}>
                 {showProviderSettings ? "Beállítások bezárása" : "Beállítások"}
@@ -7259,34 +7317,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       {" "}{activeProvider.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
                     </label>
                   </div>
-
-                  <div style={premiumToggleRowStyle}>
-                    <span>Figyelmeztetés kevés előre generált időpontnál</span>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={activeProvider.slotReminderEnabled === true}
-                        onChange={(e) => updateProviderPreference("slotReminderEnabled", e.target.checked)}
-                      />
-                      {" "}{activeProvider.slotReminderEnabled === true ? "Bekapcsolva" : "Kikapcsolva"}
-                    </label>
-                  </div>
-
-                  {activeProvider.slotReminderEnabled === true && (
-                    <div style={{ marginTop: "10px", marginBottom: "10px" }}>
-                      <label style={premiumLabelStyle}>Hány héttel előtte figyelmeztessen?</label>
-                      <select
-                        value={activeProvider.slotReminderWeeks || 1}
-                        onChange={(e) => updateProviderPreference("slotReminderWeeks", Number(e.target.value))}
-                        style={premiumSelectStyle}
-                      >
-                        <option value="1">1 hét</option>
-                        <option value="2">2 hét</option>
-                        <option value="3">3 hét</option>
-                        <option value="4">4 hét</option>
-                      </select>
-                    </div>
-                  )}
 
                   <button onClick={saveActiveProviderSettings} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
                     Beállítások mentése
@@ -7372,162 +7402,9 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowProviderMessages(!showProviderMessages)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderMessages
-                    ? `Üzenetek elrejtése (${getVisibleProviderGuestMessages(activeProvider.id).length})`
-                    : `Üzenetek megnyitása (${getVisibleProviderGuestMessages(activeProvider.id).length})`}
-                </button>
-
-                {showProviderMessages && (
-                  <>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
-                      <h3 style={{ marginBottom: 0 }}>Üzenetek</h3>
-                      {getVisibleProviderGuestMessages(activeProvider.id).length > 0 && (
-                        <button onClick={clearProviderGuestMessages} style={{ ...dangerButtonStyle, padding: "9px 12px", fontSize: "13px" }}>
-                          Üzenetek törlése
-                        </button>
-                      )}
-                    </div>
-
-                    <p style={{ color: "#6b5d72", fontSize: "13px" }}>
-                      Itt csak a vendégek valódi, kézzel írt üzenetei jelennek meg.
-                    </p>
-
-                    {getVisibleProviderGuestMessages(activeProvider.id).length === 0 && <p>Még nincs üzenet.</p>}
-
-                    {getVisibleProviderGuestMessages(activeProvider.id).map((message) => (
-                      <div key={getProviderMessageKey(activeProvider.id, message)} style={premiumListCardStyle}>
-                        <b>Vendégtől: {message.fromName}</b>
-                        {message.date && message.time && (
-                          <>
-                            <br />
-                            Időpont: {message.date} {message.time}
-                          </>
-                        )}
-                        <br />
-                        Üzenet: {message.text}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
+              <h3 style={premiumSectionTitleStyle}>Időpontok és foglalások</h3>
 
               <div style={premiumPanelStyle}>
-                <button
-                  onClick={() => setShowProviderNotifications(!showProviderNotifications)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderNotifications
-                    ? `Értesítések elrejtése (${getVisibleProviderNotifications(activeProvider).length})`
-                    : `Értesítések megnyitása (${getVisibleProviderNotifications(activeProvider).length})`}
-                </button>
-
-                {showProviderNotifications && (
-                  <>
-                    <h3>Értesítések</h3>
-
-                    {getVisibleProviderNotifications(activeProvider).length === 0 && <p>Még nincs értesítés.</p>}
-
-                    {getVisibleProviderNotifications(activeProvider).length > 0 && (
-                      <div style={{ ...premiumPanelStyle, margin: "10px 0 14px", textAlign: "center", background: "linear-gradient(135deg, rgba(255,245,247,0.96), rgba(255,255,255,0.96))" }}>
-                        <p style={{ marginTop: 0, marginBottom: "10px", color: "#6b2637", fontWeight: "700" }}>
-                          Ha már feldolgoztad őket, egy gombbal törölheted a látható értesítéseket.
-                        </p>
-                        <button
-                          onClick={clearProviderNotifications}
-                          style={{ ...dangerButtonStyle, width: "min(100%, 320px)", boxShadow: "0 10px 24px rgba(155, 28, 49, 0.22)" }}
-                        >
-                          Értesítések törlése
-                        </button>
-                      </div>
-                    )}
-
-                    {getVisibleProviderNotifications(activeProvider).map((n) => (
-                      <div key={getProviderNotificationKey(activeProvider.id, n)} style={premiumListCardStyle}>
-                        <b>{n.text}</b>
-                        {n.service && (
-                          <>
-                            <br />
-                            Szolgáltatás: {n.service}
-                          </>
-                        )}
-                        {n.note && (
-                          <>
-                            <br />
-                            Megjegyzés / üzenet: {n.note}
-                          </>
-                        )}
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumSettingsPanelStyle}>
-                <button
-                  onClick={() => setShowProviderServices(!showProviderServices)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderServices ? "Szolgáltatások elrejtése" : `Szolgáltatások kezelése (${(activeProvider.services || []).length})`}
-                </button>
-
-                {showProviderServices && (
-                  <>
-                    <h3>Szolgáltatások</h3>
-
-                    <input
-                      placeholder="Pl. Műköröm töltés"
-                      value={newServiceName}
-                      onChange={(e) => setNewServiceName(e.target.value)}
-                      style={premiumInlineInputStyle}
-                    />
-                    <button onClick={addService} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Hozzáadás</button>
-
-                    {(activeProvider.services || []).length === 0 && <p>Még nincs szolgáltatás megadva. A vendég így is tud foglalni megjegyzéssel.</p>}
-
-                    {(activeProvider.services || []).map((service) => (
-                      <div key={service} style={{ margin: "6px 0" }}>
-                        <b>{service}</b>
-                        <button onClick={() => removeService(service)} style={{ ...dangerButtonStyle, marginLeft: "10px" }}>Törlés</button>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumSettingsPanelStyle}>
-                <button
-                  onClick={() => setShowProviderBlockedGuests(!showProviderBlockedGuests)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showProviderBlockedGuests
-                    ? `Letiltott vendégek elrejtése (${(activeProvider.blockedEmails || []).length})`
-                    : `Letiltott vendégek megnyitása (${(activeProvider.blockedEmails || []).length})`}
-                </button>
-
-                {showProviderBlockedGuests && (
-                  <>
-                    <h3>Letiltott vendégek</h3>
-
-                    {(activeProvider.blockedEmails || []).length === 0 && <p>Nincs letiltott vendég.</p>}
-
-                    {(activeProvider.blockedEmails || []).map((email) => (
-                      <div key={email} style={{ margin: "6px 0" }}>
-                        <b>{email}</b>
-                        <button onClick={() => unblockGuestEmail(email)} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>
-                          Tiltás feloldása
-                        </button>
-                      </div>
-                    ))}
-                  </>
-                )}
-              </div>
-
-              <div style={premiumSettingsPanelStyle}>
                 <button
                   onClick={() => setShowProviderScheduleSettings(!showProviderScheduleSettings)}
                   style={premiumNeutralButtonStyle}
@@ -7602,25 +7479,8 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       <input type="date" value={breakDate} onChange={(e) => setBreakDate(e.target.value)} style={premiumInlineInputStyle} />
                     )}
 
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", margin: "10px 0" }}>
-                      <button
-                        type="button"
-                        onClick={() => selectBreakPreset("breakfast")}
-                        style={{ ...premiumNeutralButtonStyle, border: activeBreakPreset === "breakfast" ? "2px solid #b8860b" : premiumNeutralButtonStyle.border }}
-                      >
-                        Reggeli szünet {breakfastBreakStart}–{breakfastBreakEnd}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => selectBreakPreset("lunch")}
-                        style={{ ...premiumNeutralButtonStyle, border: activeBreakPreset === "lunch" ? "2px solid #b8860b" : premiumNeutralButtonStyle.border }}
-                      >
-                        Ebédszünet {lunchBreakStart}–{lunchBreakEnd}
-                      </button>
-                    </div>
-
-                    <input type="time" value={breakStart} onChange={(e) => updateBreakStartValue(e.target.value)} style={premiumInlineInputStyle} />
-                    <input type="time" value={breakEnd} onChange={(e) => updateBreakEndValue(e.target.value)} style={premiumInlineInputStyle} />
+                    <input type="time" value={breakStart} onChange={(e) => setBreakStart(e.target.value)} style={premiumInlineInputStyle} />
+                    <input type="time" value={breakEnd} onChange={(e) => setBreakEnd(e.target.value)} style={premiumInlineInputStyle} />
                     <button onClick={addProviderBreak} style={{ ...providerSmallButtonStyle, marginLeft: "10px" }}>Szünet hozzáadása</button>
 
                     {(activeProvider.breaks || []).length === 0 && <p>Nincs napközbeni szünet megadva.</p>}
@@ -7637,7 +7497,7 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 )}
               </div>
 
-              <h3 style={premiumSectionTitleStyle}>Időpontok és foglalások</h3>
+
 
               <h4 style={premiumSectionTitleStyle}>Válassz napot</h4>
               {renderProviderCalendar(activeProvider, providerCalendarDate, (date) => {
@@ -7844,8 +7704,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
               <h2 style={{ marginTop: 0, color: "#5b4164" }}>Belépve: {activeGuest.name}</h2>
               {activeGuest.email && <p style={premiumHeaderTextStyle}>Email: <b>{activeGuest.email}</b></p>}
               {activeGuest.phone && <p style={premiumHeaderTextStyle}>Telefonszám: <b>{activeGuest.phone}</b></p>}
-
-              {renderGuestStats(activeGuest)}
 
               <button onClick={() => setShowGuestSettings(!showGuestSettings)} style={{ ...guestSmallButtonStyle, margin: "12px 0" }}>
                 {showGuestSettings ? "Beállítások bezárása" : "Beállítások"}
@@ -8074,14 +7932,6 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                       return;
                     }
 
-                    if (selectedProvider && idsEqual(selectedProvider.id, fresh.id)) {
-                      setSelectedProvider(null);
-                      setSelectedSlot(null);
-                      setSelectedCalendarDate("");
-                      setSelectedService("");
-                      return;
-                    }
-
                     setSelectedProvider(fresh);
                     setSelectedSlot(null);
                     setSelectedCalendarDate("");
@@ -8167,6 +8017,10 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   </button>
                 </>
               )}
+
+              {renderGuestStats(activeGuest)}
+
+
 
               <br />
               <button onClick={() => setActiveGuest(null)} style={secondaryGhostButtonStyle}>Vendég kijelentkezés</button>
