@@ -1251,6 +1251,44 @@ function App() {
     return Boolean(slot && slot.date && slot.time && !slot.booked && !isSlotInPast(slot));
   }
 
+  function getProviderLatestFutureSlotDate(provider) {
+    if (!provider || !Array.isArray(provider.slots)) return null;
+
+    const futureSlotDates = provider.slots
+      .map((slot) => getSlotDateTime(slot))
+      .filter((dateTime) => dateTime && dateTime.getTime() > Date.now())
+      .sort((a, b) => b.getTime() - a.getTime());
+
+    return futureSlotDates[0] || null;
+  }
+
+  function getSlotGenerationWarning(provider) {
+    if (!provider || provider.slotWarningEnabled !== true) return "";
+
+    const warningWeeks = Math.max(1, Number(provider.slotWarningWeeks || 1));
+    const latestFutureSlotDate = getProviderLatestFutureSlotDate(provider);
+
+    if (!latestFutureSlotDate) {
+      return "Nincs előre generált jövőbeli időpontod. Generálj előre időpontokat, hogy a vendégek időben tudjanak nálad helyet foglalni.";
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const latestDate = new Date(latestFutureSlotDate);
+    latestDate.setHours(0, 0, 0, 0);
+
+    const daysAhead = Math.ceil((latestDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const weeksLeft = Math.max(0, Math.ceil(daysAhead / 7));
+
+    if (daysAhead <= warningWeeks * 7) {
+      const weekText = weeksLeft <= 1 ? "1 hétre" : `${weeksLeft} hétre`;
+      return `Már csak ${weekText} van előre időpont generálva. Generálj előre időpontokat, hogy a vendégek időben tudjanak nálad helyet foglalni.`;
+    }
+
+    return "";
+  }
+
   function getUniqueAvailableDates(provider) {
     if (!provider || !Array.isArray(provider.slots)) return [];
 
@@ -1748,6 +1786,8 @@ function App() {
       notifications: [],
       emailNotifications: providerEmailNotifications,
       pinLoginEnabled: true,
+      slotWarningEnabled: false,
+      slotWarningWeeks: 1,
     };
 
     setProviders([...providers, newProvider]);
@@ -1761,6 +1801,8 @@ function App() {
       vendegkod: normalizedGuestCode,
       email_ertesites: providerEmailNotifications,
       pin_belepes: true,
+      idopont_figyelmeztetes: false,
+      idopont_figyelmeztetes_hetek: 1,
     };
 
     let { error } = await supabase.from("szolgaltatok").insert([providerInsertRow]);
@@ -1768,9 +1810,11 @@ function App() {
     if (error && (
       String(error.message || "").toLowerCase().includes("telefon") ||
       String(error.message || "").toLowerCase().includes("email_ertesites") ||
-      String(error.message || "").toLowerCase().includes("pin_belepes")
+      String(error.message || "").toLowerCase().includes("pin_belepes") ||
+      String(error.message || "").toLowerCase().includes("idopont_figyelmeztetes") ||
+      String(error.message || "").toLowerCase().includes("idopont_figyelmeztetes_hetek")
     )) {
-      const { telefon, email_ertesites, pin_belepes, ...fallbackProviderRow } = providerInsertRow;
+      const { telefon, email_ertesites, pin_belepes, idopont_figyelmeztetes, idopont_figyelmeztetes_hetek, ...fallbackProviderRow } = providerInsertRow;
       const fallbackResult = await supabase.from("szolgaltatok").insert([fallbackProviderRow]);
       error = fallbackResult.error;
     }
@@ -1812,6 +1856,8 @@ function App() {
       notifications: [],
       emailNotifications: row.email_ertesites ?? true,
       pinLoginEnabled: row.pin_belepes !== false,
+      slotWarningEnabled: row.idopont_figyelmeztetes === true,
+      slotWarningWeeks: Number(row.idopont_figyelmeztetes_hetek || 1),
     };
   }
 
@@ -1890,6 +1936,8 @@ function App() {
       blockedEmails: Array.isArray(found.blockedEmails) ? found.blockedEmails : [],
       emailNotifications: found.emailNotifications ?? true,
       pinLoginEnabled: found.pinLoginEnabled !== false,
+      slotWarningEnabled: found.slotWarningEnabled === true,
+      slotWarningWeeks: Number(found.slotWarningWeeks || 1),
     };
 
     setProviders((currentProviders) => {
@@ -2343,7 +2391,16 @@ function App() {
     const providerDbId = await getSupabaseProviderId(activeProvider);
     if (!providerDbId) return;
 
-    const column = field === "pinLoginEnabled" ? "pin_belepes" : "email_ertesites";
+    const providerPreferenceColumns = {
+      pinLoginEnabled: "pin_belepes",
+      emailNotifications: "email_ertesites",
+      slotWarningEnabled: "idopont_figyelmeztetes",
+      slotWarningWeeks: "idopont_figyelmeztetes_hetek",
+    };
+    const column = providerPreferenceColumns[field];
+
+    if (!column) return;
+
     const { error } = await supabase
       .from("szolgaltatok")
       .update({ [column]: value })
@@ -2398,12 +2455,14 @@ function App() {
       .update({
         email_ertesites: activeProvider.emailNotifications !== false,
         pin_belepes: activeProvider.pinLoginEnabled !== false,
+        idopont_figyelmeztetes: activeProvider.slotWarningEnabled === true,
+        idopont_figyelmeztetes_hetek: Number(activeProvider.slotWarningWeeks || 1),
       })
       .eq("id", providerDbId);
 
     if (error) {
       console.error(error);
-      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes és email_ertesites oszlopok léteznek-e Supabase-ben.");
+      alert("A beállítások mentése nem sikerült. Ellenőrizd, hogy a pin_belepes, email_ertesites, idopont_figyelmeztetes és idopont_figyelmeztetes_hetek oszlopok léteznek-e Supabase-ben.");
       return;
     }
 
@@ -7348,6 +7407,37 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                     </label>
                   </div>
 
+                  <div style={premiumToggleRowStyle}>
+                    <span>Időpont-generálási figyelmeztetés</span>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={activeProvider.slotWarningEnabled === true}
+                        onChange={(e) => updateProviderPreference("slotWarningEnabled", e.target.checked)}
+                      />
+                      {" "}{activeProvider.slotWarningEnabled === true ? "Bekapcsolva" : "Kikapcsolva"}
+                    </label>
+                  </div>
+
+                  {activeProvider.slotWarningEnabled === true && (
+                    <div style={{ marginTop: "10px" }}>
+                      <label style={premiumLabelStyle}>Hány hétnél figyelmeztessen?</label>
+                      <select
+                        value={String(activeProvider.slotWarningWeeks || 1)}
+                        onChange={(e) => updateProviderPreference("slotWarningWeeks", Number(e.target.value))}
+                        style={premiumSelectStyle}
+                      >
+                        <option value="1">1 hét</option>
+                        <option value="2">2 hét</option>
+                        <option value="3">3 hét</option>
+                        <option value="4">4 hét</option>
+                      </select>
+                      <p style={premiumHintStyle}>
+                        Példa: ha 1 hét van beállítva, akkor figyelmeztet, amikor már csak legfeljebb 1 hétre van előre időpont generálva.
+                      </p>
+                    </div>
+                  )}
+
                   <button onClick={saveActiveProviderSettings} style={{ ...providerSmallButtonStyle, marginTop: "12px" }}>
                     Beállítások mentése
                   </button>
@@ -7431,6 +7521,18 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                   </div>
                 )}
               </div>
+
+              {getSlotGenerationWarning(activeProvider) && (
+                <div style={{
+                  ...premiumPanelStyle,
+                  border: "1px solid rgba(214, 167, 0, 0.45)",
+                  background: "linear-gradient(180deg, rgba(255, 251, 224, 0.98) 0%, rgba(255, 255, 255, 0.96) 100%)",
+                  color: "#6b5200",
+                  fontWeight: "700",
+                }}>
+                  ⚠️ {getSlotGenerationWarning(activeProvider)}
+                </div>
+              )}
 
               <h3 style={premiumSectionTitleStyle}>Időpontok és foglalások</h3>
 
