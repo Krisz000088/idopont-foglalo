@@ -6,6 +6,7 @@ import DeveloperContact from "./components/DeveloperContact";
 import ProviderLogin from "./components/ProviderLogin";
 import GuestLogin from "./components/GuestLogin";
 import ProviderRegister from "./components/ProviderRegister";
+import GuestRegister from "./components/GuestRegister";
 
 const days = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 
@@ -7635,64 +7636,28 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
       )}
 
       {mode === "createGuest" && (
-        <div style={guestFormCardStyle}>
-          <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#5b4164" }}>Vendég regisztráció</h2>
-          <div style={premiumFormHeaderLineStyle}></div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>Név</label>
-            <input
-              style={premiumInputStyle}
-              placeholder="Kovács Anna"
-              value={guestName}
-              onChange={(e) => setGuestName(e.target.value)}
-            />
-          </div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>Email</label>
-            <input
-              style={premiumInputStyle}
-              placeholder="anna@email.com"
-              value={guestEmail}
-              onChange={(e) => setGuestEmail(e.target.value)}
-            />
-          </div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>Telefon <span style={{ fontWeight: 400, color: "#82758d" }}>(nem kötelező)</span></label>
-            <input
-              style={premiumInputStyle}
-              placeholder="+36..."
-              value={guestPhone}
-              onChange={(e) => setGuestPhone(e.target.value)}
-            />
-          </div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>PIN</label>
-            <input
-              style={premiumInputStyle}
-              placeholder="4 számjegy"
-              value={guestPin}
-              onChange={(e) => setGuestPin(e.target.value)}
-              maxLength="4"
-            />
-          </div>
-
-          <label style={{ ...premiumToggleRowStyle, borderBottom: "none", justifyContent: "center", marginBottom: "10px" }}>
-            <input type="checkbox" checked={guestEmailNotifications} onChange={(e) => setGuestEmailNotifications(e.target.checked)} />
-            <span>Kérek email értesítést a foglalásaimról</span>
-          </label>
-
-          <button onClick={createGuest} style={guestPrimaryActionStyle}>
-            Vendég létrehozása
-          </button>
-
-          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>
-            Vissza
-          </button>
-        </div>
+        <GuestRegister
+          guestName={guestName}
+          setGuestName={setGuestName}
+          guestEmail={guestEmail}
+          setGuestEmail={setGuestEmail}
+          guestPhone={guestPhone}
+          setGuestPhone={setGuestPhone}
+          guestPin={guestPin}
+          setGuestPin={setGuestPin}
+          guestEmailNotifications={guestEmailNotifications}
+          setGuestEmailNotifications={setGuestEmailNotifications}
+          createGuest={createGuest}
+          setMode={setMode}
+          guestFormCardStyle={guestFormCardStyle}
+          premiumFormHeaderLineStyle={premiumFormHeaderLineStyle}
+          premiumFieldGroupStyle={premiumFieldGroupStyle}
+          premiumLabelStyle={premiumLabelStyle}
+          premiumInputStyle={premiumInputStyle}
+          premiumToggleRowStyle={premiumToggleRowStyle}
+          guestPrimaryActionStyle={guestPrimaryActionStyle}
+          secondaryGhostButtonStyle={secondaryGhostButtonStyle}
+        />
       )}
 
       {mode === "guestLogin" && (
