@@ -8,6 +8,7 @@ import GuestLogin from "./components/GuestLogin";
 import ProviderRegister from "./components/ProviderRegister";
 import GuestRegister from "./components/GuestRegister";
 import TestAccessData from "./components/TestAccessData";
+import GuestSettings from "./components/GuestSettings";
 
 const days = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 
@@ -7662,190 +7663,39 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
                 {showGuestSettings ? "Beállítások bezárása" : "Beállítások"}
               </button>
 
-              {showGuestSettings && (
-                <div style={premiumPanelStyle}>
-                  <h3 style={{ marginTop: 0 }}>Vendég beállítások</h3>
-                  <div style={premiumToggleRowStyle}>
-                    <span>Email értesítés foglalásokról</span>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={(activeGuest.emailNotifications ?? guestEmailNotifications) !== false}
-                        onChange={(e) => updateGuestPreference("emailNotifications", e.target.checked)}
-                      />
-                      {" "}{(activeGuest.emailNotifications ?? guestEmailNotifications) !== false ? "Bekapcsolva" : "Kikapcsolva"}
-                    </label>
-                  </div>
-
-                  <div style={premiumToggleRowStyle}>
-                    <span>PIN kérése belépéskor</span>
-                    <label>
-                      <input
-                        type="checkbox"
-                        checked={activeGuest.pinLoginEnabled !== false}
-                        onChange={(e) => updateGuestPreference("pinLoginEnabled", e.target.checked)}
-                      />
-                      {" "}{activeGuest.pinLoginEnabled !== false ? "Bekapcsolva" : "Kikapcsolva"}
-                    </label>
-                  </div>
-
-                  <button onClick={saveActiveGuestSettings} style={{ ...guestSmallButtonStyle, marginTop: "12px" }}>
-                    Beállítások mentése
-                  </button>
-
-                  <DeveloperContact
-                    senderType="guest"
-                    senderName={activeGuest.name}
-                    senderEmail={activeGuest.email}
-                    showDeveloperContact={showDeveloperContact}
-                    setShowDeveloperContact={setShowDeveloperContact}
-                    developerMessageText={developerMessageText}
-                    setDeveloperMessageText={setDeveloperMessageText}
-                    sendDeveloperMessage={sendDeveloperMessage}
-                    buttonStyle={guestSmallButtonStyle}
-                    inputStyle={premiumInputStyle}
-                  />
-                </div>
-              )}
-
-              <div style={{ ...premiumActionButtonRowStyle, display: showGuestSettings ? "flex" : "none" }}>
-                <button
-                  onClick={() => setShowGuestPhoneEdit(!showGuestPhoneEdit)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showGuestPhoneEdit ? "Telefonszám módosítás bezárása" : "Telefonszám módosítása"}
-                </button>
-
-                <button
-                  onClick={() => setShowGuestPinEdit(!showGuestPinEdit)}
-                  style={premiumNeutralButtonStyle}
-                >
-                  {showGuestPinEdit ? "PIN módosítás bezárása" : "Saját PIN módosítása"}
-                </button>
-              </div>
-
-              {showGuestPhoneEdit && (
-                <div style={premiumPanelStyle}>
-                  <h3>Telefonszám módosítása</h3>
-                  <p style={{ marginTop: 0 }}>Nem kötelező, de a szolgáltató így könnyebben elérhet.</p>
-                  <input
-                    placeholder="Telefonszám, pl. +36..."
-                    value={editableGuestPhone}
-                    onChange={(e) => setEditableGuestPhone(e.target.value)}
-                    style={{ ...premiumInlineInputStyle, width: "100%" }}
-                  />
-                  <button onClick={updateActiveGuestPhone} style={{ ...premiumNeutralButtonStyle, marginLeft: "8px" }}>
-                    Telefonszám mentése
-                  </button>
-                </div>
-              )}
-
-              {showGuestPinEdit && (
-                <div style={premiumPanelStyle}>
-                  <h3>Saját PIN módosítása</h3>
-                  <p style={{ marginTop: 0 }}>Itt tudod módosítani a vendég belépési PIN-kódodat.</p>
-                  <input
-                    placeholder="Jelenlegi PIN"
-                    value={guestCurrentPin}
-                    onChange={(e) => setGuestCurrentPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    maxLength="4"
-                      style={premiumInlineInputStyle}
-                  />
-                  <input
-                    placeholder="Új PIN"
-                    value={guestNewPin}
-                    onChange={(e) => setGuestNewPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    maxLength="4"
-                      style={premiumInlineInputStyle}
-                  />
-                  <input
-                    placeholder="Új PIN még egyszer"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-                    value={guestNewPinAgain}
-                    onChange={(e) => setGuestNewPinAgain(e.target.value.replace(/\D/g, "").slice(0, 4))}
-                    maxLength="4"
-                      style={premiumInlineInputStyle}
-                  />
-                  <button onClick={changeGuestPin} style={guestSmallButtonStyle}>PIN módosítása</button>
-                </div>
-              )}
+              <GuestSettings
+                activeGuest={activeGuest}
+                showGuestSettings={showGuestSettings}
+                guestEmailNotifications={guestEmailNotifications}
+                updateGuestPreference={updateGuestPreference}
+                saveActiveGuestSettings={saveActiveGuestSettings}
+                showDeveloperContact={showDeveloperContact}
+                setShowDeveloperContact={setShowDeveloperContact}
+                developerMessageText={developerMessageText}
+                setDeveloperMessageText={setDeveloperMessageText}
+                sendDeveloperMessage={sendDeveloperMessage}
+                showGuestPhoneEdit={showGuestPhoneEdit}
+                setShowGuestPhoneEdit={setShowGuestPhoneEdit}
+                editableGuestPhone={editableGuestPhone}
+                setEditableGuestPhone={setEditableGuestPhone}
+                updateActiveGuestPhone={updateActiveGuestPhone}
+                showGuestPinEdit={showGuestPinEdit}
+                setShowGuestPinEdit={setShowGuestPinEdit}
+                guestCurrentPin={guestCurrentPin}
+                setGuestCurrentPin={setGuestCurrentPin}
+                guestNewPin={guestNewPin}
+                setGuestNewPin={setGuestNewPin}
+                guestNewPinAgain={guestNewPinAgain}
+                setGuestNewPinAgain={setGuestNewPinAgain}
+                changeGuestPin={changeGuestPin}
+                premiumPanelStyle={premiumPanelStyle}
+                premiumToggleRowStyle={premiumToggleRowStyle}
+                guestSmallButtonStyle={guestSmallButtonStyle}
+                premiumInputStyle={premiumInputStyle}
+                premiumActionButtonRowStyle={premiumActionButtonRowStyle}
+                premiumNeutralButtonStyle={premiumNeutralButtonStyle}
+                premiumInlineInputStyle={premiumInlineInputStyle}
+              />
 
               <div style={premiumPanelStyle}>
                 <button
