@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
+import HomePage from "./components/HomePage";
 
 const days = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 
@@ -7136,38 +7137,15 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
       <div style={{ ...premiumFormHeaderLineStyle, width: "110px", height: "5px", margin: "0 auto 24px", background: "linear-gradient(90deg, rgba(36,59,85,0), #243b55, #7f5a83, rgba(127,90,131,0))" }}></div>
 
       {!mode && (
-        <>
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "14px", marginTop: "18px" }}>
-            <button onClick={() => setMode("providerLogin")} style={providerHomeButtonStyle}>
-              Szolgáltató belépés
-            </button>
-
-            <button onClick={() => setMode("createProvider")} style={providerHomeButtonStyle}>
-              Szolgáltató regisztráció
-            </button>
-
-            <div style={{ height: "8px" }} />
-
-            <button onClick={() => setMode("guestLogin")} style={guestHomeButtonStyle}>
-              Vendég belépés
-            </button>
-
-            <button onClick={() => setMode("createGuest")} style={guestHomeButtonStyle}>
-              Vendég regisztráció
-            </button>
-
-            <button onClick={() => setMode("forgotLogin")} style={forgotPasswordLinkStyle}>
-              Elfelejtett jelszó
-            </button>
-          </div>
-
-          <div style={premiumLandingHintStyle}>
-            Gyors, letisztult időpontfoglalás szolgáltatóknak és vendégeknek.
-            <br />
-            Regisztrálj, adj meg szabad időpontokat, a vendégek pedig pár kattintással foglalhatnak.
-          </div>
-
-        </>
+        <HomePage
+          setMode={setMode}
+          styles={{
+            providerHomeButtonStyle,
+            guestHomeButtonStyle,
+            forgotPasswordLinkStyle,
+            premiumLandingHintStyle,
+          }}
+        />
       )}
 
 
