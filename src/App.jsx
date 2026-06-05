@@ -1802,7 +1802,7 @@ function App() {
       nev: providerName,
       profilnev: "",
       email: providerEmail,
-      phone: providerPhone,
+      telefon: providerPhone,
       pin: providerPin,
       vendegkod: normalizedGuestCode,
       email_ertesites: providerEmailNotifications,
