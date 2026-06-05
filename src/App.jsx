@@ -18,6 +18,7 @@ import GuestBookings from "./components/GuestBookings";
 import ProviderBookings from "./components/ProviderBookings";
 import ProviderOverview from "./components/ProviderOverview";
 import GuestOverview from "./components/GuestOverview";
+import BlockedGuests from "./components/BlockedGuests";
 
 const days = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 
@@ -3080,35 +3081,15 @@ function renderProviderOverviewPanel(provider, panel) {
 
     if (panel === "blockedGuests") {
       return (
-        <div style={panelBoxStyle}>
-          <h4 style={{ marginTop: 0 }}>Tiltott vendégek</h4>
-          {(provider.blockedEmails || []).length === 0 && <p>Nincs letiltott vendég.</p>}
-          {(provider.blockedEmails || []).map((email) => {
-            const blockedGuest = guests.find((guest) => normalizeEmail(guest.email) === normalizeEmail(email));
-
-            return (
-              <div key={email} style={smallCardStyle}>
-                <b>{blockedGuest?.name || email}</b>
-                {blockedGuest?.email && (
-                  <>
-                    <br />
-                    Email: {blockedGuest.email}
-                  </>
-                )}
-                {blockedGuest?.phone && (
-                  <>
-                    <br />
-                    Telefon: {blockedGuest.phone}
-                  </>
-                )}
-                <br />
-                <button onClick={() => unblockGuestEmail(email)} style={{ ...providerSmallButtonStyle, marginTop: "8px" }}>
-                  Tiltás feloldása
-                </button>
-              </div>
-            );
-          })}
-        </div>
+        <BlockedGuests
+          provider={provider}
+          guests={guests}
+          normalizeEmail={normalizeEmail}
+          unblockGuestEmail={unblockGuestEmail}
+          panelBoxStyle={panelBoxStyle}
+          smallCardStyle={smallCardStyle}
+          providerSmallButtonStyle={providerSmallButtonStyle}
+        />
       );
     }
 
