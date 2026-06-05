@@ -5,6 +5,7 @@ import ForgotPassword from "./components/ForgotPassword";
 import DeveloperContact from "./components/DeveloperContact";
 import ProviderLogin from "./components/ProviderLogin";
 import GuestLogin from "./components/GuestLogin";
+import ProviderRegister from "./components/ProviderRegister";
 
 const days = ["Hétfő", "Kedd", "Szerda", "Csütörtök", "Péntek", "Szombat", "Vasárnap"];
 
@@ -7180,77 +7181,35 @@ A belépési adatok most külön, kimásolható mezőkben látszanak a főoldalo
 
 
       {mode === "createProvider" && (
-        <div style={providerFormCardStyle}>
-          <h2 style={{ marginTop: 0, marginBottom: "8px", color: "#243b55" }}>Szolgáltató regisztráció</h2>
-          <div style={premiumFormHeaderLineStyle}></div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>Név</label>
-            <input
-              style={premiumInputStyle}
-              placeholder="Móni Körmös"
-              value={providerName}
-              onChange={(e) => setProviderName(e.target.value)}
-            />
-          </div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>Email</label>
-            <input
-              style={premiumInputStyle}
-              placeholder="moni@email.com"
-              value={providerEmail}
-              onChange={(e) => setProviderEmail(e.target.value)}
-            />
-          </div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>Telefonszám <span style={{ fontWeight: 400, color: "#82758d" }}>(nem kötelező)</span></label>
-            <input
-              style={premiumInputStyle}
-              placeholder="+43..."
-              value={providerPhone}
-              onChange={(e) => setProviderPhone(e.target.value)}
-            />
-          </div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>PIN</label>
-            <input
-              style={premiumInputStyle}
-              placeholder="4 számjegy"
-              value={providerPin}
-              onChange={(e) => setProviderPin(e.target.value)}
-              maxLength="4"
-            />
-          </div>
-
-          <div style={premiumFieldGroupStyle}>
-            <label style={premiumLabelStyle}>Vendégkód</label>
-            <input
-              style={premiumInputStyle}
-              placeholder="MONI-2026"
-              value={guestCode}
-              onChange={(e) => setGuestCode(normalizeGuestCode(e.target.value))}
-            />
-          </div>
-
-          <label style={{ ...premiumToggleRowStyle, borderBottom: "none", justifyContent: "center", marginBottom: "10px" }}>
-            <input type="checkbox" checked={providerEmailNotifications} onChange={(e) => setProviderEmailNotifications(e.target.checked)} />
-            <span>Kérek email értesítést foglalásokról</span>
-          </label>
-
-          <button onClick={createProvider} style={providerPrimaryActionStyle}>
-            Regisztráció
-          </button>
-
-          <button onClick={() => setMode("")} style={secondaryGhostButtonStyle}>
-            Vissza
-          </button>
-        </div>
+        <ProviderRegister
+          providerName={providerName}
+          setProviderName={setProviderName}
+          providerEmail={providerEmail}
+          setProviderEmail={setProviderEmail}
+          providerPhone={providerPhone}
+          setProviderPhone={setProviderPhone}
+          providerPin={providerPin}
+          setProviderPin={setProviderPin}
+          guestCode={guestCode}
+          setGuestCode={setGuestCode}
+          providerEmailNotifications={providerEmailNotifications}
+          setProviderEmailNotifications={setProviderEmailNotifications}
+          createProvider={createProvider}
+          normalizeGuestCode={normalizeGuestCode}
+          setMode={setMode}
+          providerFormCardStyle={providerFormCardStyle}
+          premiumFormHeaderLineStyle={premiumFormHeaderLineStyle}
+          premiumFieldGroupStyle={premiumFieldGroupStyle}
+          premiumLabelStyle={premiumLabelStyle}
+          premiumInputStyle={premiumInputStyle}
+          premiumToggleRowStyle={premiumToggleRowStyle}
+          providerPrimaryActionStyle={providerPrimaryActionStyle}
+          secondaryGhostButtonStyle={secondaryGhostButtonStyle}
+        />
       )}
 
-      {mode === "providerLogin" && (
+      
+{mode === "providerLogin" && (
         <>
           {!activeProvider && (
             <ProviderLogin
