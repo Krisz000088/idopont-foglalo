@@ -894,12 +894,69 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
       return message;
     });
 
+    const localStoredProviders = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("providers")) || [];
+      } catch (error) {
+        console.warn("Helyi szolgáltató adatok olvasása nem sikerült:", error);
+        return [];
+      }
+    })();
+
+    const localProviderCandidates = [...(providers || []), ...localStoredProviders];
+
+    function mergeLocalSlotsIntoProvider(provider) {
+      const matchingLocalProvider = localProviderCandidates.find(
+        (localProvider) =>
+          localProvider &&
+          (
+            idsEqual(localProvider.id, provider.id) ||
+            normalizeEmail(localProvider.email) === normalizeEmail(provider.email)
+          )
+      );
+
+      const localSlots = Array.isArray(matchingLocalProvider?.slots) ? matchingLocalProvider.slots : [];
+      const supabaseSlots = Array.isArray(provider.slots) ? provider.slots : [];
+
+      if (localSlots.length === 0) {
+        return supabaseSlots;
+      }
+
+      const slotMap = new Map();
+
+      supabaseSlots.forEach((slot) => {
+        if (!slot || !slot.date || !slot.time) return;
+        const normalizedTime = String(slot.time).slice(0, 5);
+        slotMap.set(`${slot.date}-${normalizedTime}`, {
+          ...slot,
+          time: normalizedTime,
+        });
+      });
+
+      localSlots.forEach((slot) => {
+        if (!slot || !slot.date || !slot.time) return;
+        const normalizedTime = String(slot.time).slice(0, 5);
+        const key = `${slot.date}-${normalizedTime}`;
+
+        if (!slotMap.has(key)) {
+          slotMap.set(key, {
+            ...slot,
+            time: normalizedTime,
+          });
+        }
+      });
+
+      return Array.from(slotMap.values()).sort((a, b) =>
+        `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`)
+      );
+    }
+
     const loadedProviders = Array.from(providerMap.values()).map((provider) => ({
       ...provider,
       exceptionDates: [...new Set(provider.exceptionDates || [])].sort(),
       breaks: Array.isArray(provider.breaks) ? provider.breaks : [],
       blockedEmails: [...new Set(provider.blockedEmails || [])],
-      slots: (provider.slots || []).sort((a, b) => `${a.date} ${a.time}`.localeCompare(`${b.date} ${b.time}`)),
+      slots: mergeLocalSlotsIntoProvider(provider),
       notifications: getVisibleProviderNotifications(provider),
     }));
 
