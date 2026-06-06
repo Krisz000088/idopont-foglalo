@@ -36,6 +36,19 @@ import {
   getProviderStatsFromData,
   getRegisteredGuestsForProviderFromList,
 } from "./utils/providerBookingHelpers";
+import {
+  getGuestMessageKeyValue,
+  getGuestNotificationKeyValue,
+  getOverviewSeenKeyValue,
+  getProviderMessageKeyValue,
+  getProviderNotificationKeyValue,
+  getSeenCountFromMap,
+  getVisibleGuestNotificationsFromList,
+  getVisibleProviderGuestMessagesFromList,
+  getVisibleProviderNotificationsFromList,
+  hasUnseenOverviewItemValue,
+  isRealGuestMessage,
+} from "./utils/messageHelpers";
 import HomePage from "./components/HomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import DeveloperContact from "./components/DeveloperContact";
@@ -236,59 +249,49 @@ function App() {
   }
 
   function getProviderNotificationKey(providerId, notification) {
-    return `${normalizeId(providerId)}|${normalizeId(notification?.id)}|${String(notification?.text || "").trim()}`;
+    return getProviderNotificationKeyValue(normalizeId, providerId, notification);
   }
 
   function getVisibleProviderNotifications(provider) {
-    if (!provider) return [];
-
-    return (provider.notifications || []).filter(
-      (notification) => !hiddenProviderNotificationKeys.includes(getProviderNotificationKey(provider.id, notification))
-    );
+    return getVisibleProviderNotificationsFromList(provider, hiddenProviderNotificationKeys, normalizeId);
   }
 
   function getProviderMessageKey(providerId, message) {
-    return `${normalizeId(providerId)}|${normalizeId(message?.id)}|${String(message?.text || "").trim()}`;
+    return getProviderMessageKeyValue(normalizeId, providerId, message);
   }
 
-  function isRealGuestMessage(message) {
-    return message?.from === "guest" && (message?.type || "message") === "message";
-  }
 
   function getVisibleProviderGuestMessages(providerId) {
-    if (!providerId) return [];
-
-    return getMessagesForProvider(providerId).filter(
-      (message) => isRealGuestMessage(message) && !hiddenProviderMessageKeys.includes(getProviderMessageKey(providerId, message))
+    return getVisibleProviderGuestMessagesFromList(
+      getMessagesForProvider(providerId),
+      hiddenProviderMessageKeys,
+      normalizeId,
+      providerId
     );
   }
 
   function getGuestMessageKey(guestId, message) {
-    return `${normalizeId(guestId)}|${normalizeId(message?.id)}|${String(message?.text || "").trim()}`;
+    return getGuestMessageKeyValue(normalizeId, guestId, message);
   }
 
   function getGuestNotificationKey(guestId, notification) {
-    return `${normalizeId(guestId)}|${normalizeId(notification?.id)}|${String(notification?.text || "").trim()}|${String(notification?.message || "").trim()}`;
+    return getGuestNotificationKeyValue(normalizeId, guestId, notification);
   }
 
   function getVisibleGuestNotifications(guest) {
-    if (!guest) return [];
-
-    return (guest.notifications || []).filter(
-      (notification) => !hiddenGuestNotificationKeys.includes(getGuestNotificationKey(guest.id, notification))
-    );
+    return getVisibleGuestNotificationsFromList(guest, hiddenGuestNotificationKeys, normalizeId);
   }
 
   function getOverviewSeenKey(ownerId, panelKey) {
-    return `${normalizeId(ownerId)}|${panelKey}`;
+    return getOverviewSeenKeyValue(normalizeId, ownerId, panelKey);
   }
 
   function getSeenCount(seenCounts, ownerId, panelKey) {
-    return Number(seenCounts?.[getOverviewSeenKey(ownerId, panelKey)] || 0);
+    return getSeenCountFromMap(seenCounts, normalizeId, ownerId, panelKey);
   }
 
   function hasUnseenOverviewItem(seenCounts, ownerId, panelKey, currentValue) {
-    return Number(currentValue || 0) > 0 && Number(currentValue || 0) > getSeenCount(seenCounts, ownerId, panelKey);
+    return hasUnseenOverviewItemValue(seenCounts, normalizeId, ownerId, panelKey, currentValue);
   }
 
   function markProviderOverviewPanelSeen(provider, panelKey, value) {
