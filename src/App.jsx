@@ -755,11 +755,12 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
       const provider = providerMap.get(row.szolgaltato_id);
       if (!provider || !row.datum || !row.ido) return;
 
+      const normalizedTime = formatTimeFromSupabase(row.ido);
       const slot = {
         id: row.id,
         date: row.datum,
         day: getHungarianDayName(new Date(`${row.datum}T00:00:00`)),
-        time: formatTimeFromSupabase(row.ido),
+        time: normalizedTime,
         booked: Boolean(row.foglalt),
         bookedBy: "",
         guestId: null,
@@ -771,21 +772,95 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
 
       provider.slots = [...(provider.slots || []), slot];
       slotMap.set(row.id, slot);
+      slotMap.set(`${row.szolgaltato_id}|${row.datum}|${normalizedTime}`, slot);
     });
+
+    const localStoredBookings = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("guestBookings")) || [];
+      } catch (error) {
+        console.warn("Helyi foglalás adatok olvasása nem sikerült:", error);
+        return [];
+      }
+    })();
+
+    const localBookingCandidates = [...(guestBookings || []), ...localStoredBookings];
+
+    const localStoredProvidersForBookingFallback = (() => {
+      try {
+        return JSON.parse(localStorage.getItem("providers")) || [];
+      } catch (error) {
+        console.warn("Helyi szolgáltató adatok olvasása nem sikerült:", error);
+        return [];
+      }
+    })();
+
+    const localProviderCandidatesForBookingFallback = [...(providers || []), ...localStoredProvidersForBookingFallback];
+
+    function findLocalSlotFallback(row, provider, guest) {
+      const matchingProviders = localProviderCandidatesForBookingFallback.filter((localProvider) => {
+        if (!localProvider) return false;
+        if (provider && (idsEqual(localProvider.id, provider.id) || normalizeEmail(localProvider.email) === normalizeEmail(provider.email))) return true;
+        return idsEqual(localProvider.id, row.szolgaltato_id);
+      });
+
+      for (const localProvider of matchingProviders) {
+        const slots = Array.isArray(localProvider.slots) ? localProvider.slots : [];
+        const foundSlot = slots.find((slot) => {
+          if (!slot) return false;
+          if (row.idopont_id && idsEqual(slot.id, row.idopont_id)) return true;
+          if (guest && slot.guestId && idsEqual(slot.guestId, guest.id)) return true;
+          if (guest && slot.guestEmail && normalizeEmail(slot.guestEmail) === normalizeEmail(guest.email)) return true;
+          return false;
+        });
+
+        if (foundSlot) return foundSlot;
+      }
+
+      return null;
+    }
+
+    function findLocalBookingFallback(row, provider, guest, slot) {
+      return localBookingCandidates.find((booking) => {
+        if (!booking) return false;
+        if (row.id && idsEqual(booking.id, row.id)) return true;
+        if (slot?.id && idsEqual(booking.slotId, slot.id)) return true;
+        if (row.idopont_id && idsEqual(booking.slotId, row.idopont_id)) return true;
+
+        const sameProvider = provider
+          ? idsEqual(booking.providerId, provider.id) || normalizeEmail(booking.providerName) === normalizeEmail(provider.name)
+          : idsEqual(booking.providerId, row.szolgaltato_id);
+        const sameGuest = guest
+          ? idsEqual(booking.guestId, guest.id) || normalizeEmail(booking.guestEmail) === normalizeEmail(guest.email)
+          : idsEqual(booking.guestId, row.vendeg_id);
+
+        return Boolean(sameProvider && sameGuest && booking.date && booking.time);
+      }) || null;
+    }
 
     const loadedBookings = bookingRows.map((row) => {
       const provider = providerMap.get(row.szolgaltato_id);
       const guest = guestMap.get(row.vendeg_id);
-      const slot = slotMap.get(row.idopont_id);
+      const slot =
+        slotMap.get(row.idopont_id) ||
+        (row.datum && row.ido ? slotMap.get(`${row.szolgaltato_id}|${row.datum}|${formatTimeFromSupabase(row.ido)}`) : null);
+      const localSlotFallback = slot || findLocalSlotFallback(row, provider, guest);
+      const localFallback = findLocalBookingFallback(row, provider, guest, localSlotFallback);
+
+      const bookingDate = slot?.date || row.datum || localFallback?.date || localSlotFallback?.date || "";
+      const bookingTime = slot?.time || formatTimeFromSupabase(row.ido) || localFallback?.time || localSlotFallback?.time || "";
+      const bookingDay = slot?.day || localFallback?.day || localSlotFallback?.day || (bookingDate ? getHungarianDayName(new Date(`${bookingDate}T00:00:00`)) : "");
+      const bookingService = row.szolgaltatas || localFallback?.service || "";
+      const bookingNote = row.megjegyzes || localFallback?.note || "";
 
       if (slot && guest) {
         slot.booked = true;
-        slot.bookedBy = guest.name || "";
+        slot.bookedBy = guest.name || localFallback?.guestName || "";
         slot.guestId = guest.id;
-        slot.guestEmail = guest.email || "";
-        slot.guestPhone = guest.phone || "";
-        slot.service = row.szolgaltatas || "";
-        slot.note = row.megjegyzes || "";
+        slot.guestEmail = guest.email || localFallback?.guestEmail || "";
+        slot.guestPhone = guest.phone || localFallback?.guestPhone || "";
+        slot.service = bookingService;
+        slot.note = bookingNote;
       }
 
       if (guest && provider && !guest.providerIds.some((providerId) => idsEqual(providerId, provider.id))) {
@@ -796,28 +871,28 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
         provider.notifications = [
           {
             id: row.id,
-            text: `${guest?.name || "Vendég"} lefoglalta ezt az időpontot: ${slot?.date || ""} ${slot?.time || ""}`,
-            note: row.megjegyzes || "",
-            service: row.szolgaltatas || "",
+            text: `${guest?.name || localFallback?.guestName || "Vendég"} lefoglalta ezt az időpontot: ${bookingDate} ${bookingTime}`,
+            note: bookingNote,
+            service: bookingService,
           },
           ...(provider.notifications || []),
         ];
       }
 
       return {
-        id: row.id,
-        guestId: guest?.id || row.vendeg_id,
-        guestName: guest?.name || "",
-        guestEmail: guest?.email || "",
-        guestPhone: guest?.phone || "",
-        providerId: provider?.id || row.szolgaltato_id,
-        providerName: provider?.name || "",
-        slotId: slot?.id || row.idopont_id,
-        date: slot?.date || "",
-        day: slot?.day || "",
-        time: slot?.time || "",
-        service: row.szolgaltatas || "",
-        note: row.megjegyzes || "",
+        id: row.id || localFallback?.id || Date.now(),
+        guestId: guest?.id || row.vendeg_id || localFallback?.guestId,
+        guestName: guest?.name || localFallback?.guestName || "",
+        guestEmail: guest?.email || localFallback?.guestEmail || "",
+        guestPhone: guest?.phone || localFallback?.guestPhone || "",
+        providerId: provider?.id || row.szolgaltato_id || localFallback?.providerId,
+        providerName: provider?.name || localFallback?.providerName || "",
+        slotId: slot?.id || row.idopont_id || localFallback?.slotId || localSlotFallback?.id,
+        date: bookingDate,
+        day: bookingDay,
+        time: bookingTime,
+        service: bookingService,
+        note: bookingNote,
         active: true,
         cancelledByProvider: false,
         providerCancelMessage: "",
