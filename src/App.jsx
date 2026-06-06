@@ -2622,6 +2622,153 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     );
   }
 
+  async function deleteFreeSlots() {
+    if (!activeProvider) return;
+
+    const providerDbId = await getSupabaseProviderId(activeProvider);
+    const providerSource =
+      providers.find((provider) => idsEqual(provider.id, activeProvider.id)) ||
+      providers.find((provider) => providerDbId && idsEqual(provider.id, providerDbId)) ||
+      providers.find((provider) => normalizeEmail(provider.email) === normalizeEmail(activeProvider.email)) ||
+      activeProvider;
+
+    const providerSlots = Array.isArray(providerSource.slots) ? providerSource.slots : [];
+    const activeProviderBookings = (guestBookings || []).filter(
+      (booking) => booking && booking.active && (
+        idsEqual(booking.providerId, providerSource.id) ||
+        idsEqual(booking.providerId, activeProvider.id) ||
+        (providerDbId && idsEqual(booking.providerId, providerDbId)) ||
+        normalizeEmail(booking.providerName) === normalizeEmail(providerSource.name)
+      )
+    );
+
+    const bookingKeys = new Set(
+      activeProviderBookings
+        .filter((booking) => booking.date && booking.time)
+        .map((booking) => `${booking.date}-${String(booking.time).slice(0, 5)}`)
+    );
+
+    const freeSlotsToDelete = providerSlots.filter((slot) => {
+      if (!slot || !slot.date || !slot.time) return false;
+      const slotKey = `${slot.date}-${String(slot.time).slice(0, 5)}`;
+      return !slot.booked && !bookingKeys.has(slotKey);
+    });
+
+    if (freeSlotsToDelete.length === 0) {
+      alert("Nincs törölhető szabad időpont. A foglalt időpontokat nem törlöm.");
+      return;
+    }
+
+    if (!confirm(`Biztosan törlöd az összes szabad időpontot?\n\nTörlendő szabad időpontok száma: ${freeSlotsToDelete.length}\n\nA foglalt időpontok megmaradnak.`)) {
+      return;
+    }
+
+    const freeSlotKeys = new Set(
+      freeSlotsToDelete.map((slot) => `${slot.date}-${String(slot.time).slice(0, 5)}`)
+    );
+
+    const remainingSlots = providerSlots.filter((slot) => {
+      if (!slot || !slot.date || !slot.time) return true;
+      const slotKey = `${slot.date}-${String(slot.time).slice(0, 5)}`;
+      return !freeSlotKeys.has(slotKey);
+    });
+
+    const updatedProvider = {
+      ...providerSource,
+      ...activeProvider,
+      id: providerDbId || activeProvider.id || providerSource.id,
+      slots: remainingSlots,
+    };
+
+    let providerWasUpdated = false;
+    const updatedProviders = providers.map((provider) => {
+      const sameProvider =
+        idsEqual(provider.id, activeProvider.id) ||
+        idsEqual(provider.id, updatedProvider.id) ||
+        (providerDbId && idsEqual(provider.id, providerDbId)) ||
+        normalizeEmail(provider.email) === normalizeEmail(updatedProvider.email);
+
+      if (!sameProvider) return provider;
+
+      providerWasUpdated = true;
+      return {
+        ...provider,
+        ...updatedProvider,
+        id: providerDbId || provider.id || updatedProvider.id,
+        slots: remainingSlots,
+      };
+    });
+
+    if (!providerWasUpdated) {
+      updatedProviders.push(updatedProvider);
+    }
+
+    setProviders(updatedProviders);
+    setActiveProvider(updatedProvider);
+    setProviderCalendarDate("");
+
+    if (selectedProvider && (
+      idsEqual(selectedProvider.id, updatedProvider.id) ||
+      normalizeEmail(selectedProvider.email) === normalizeEmail(updatedProvider.email)
+    )) {
+      setSelectedProvider(updatedProvider);
+    }
+
+    if (changeProvider && (
+      idsEqual(changeProvider.id, updatedProvider.id) ||
+      normalizeEmail(changeProvider.email) === normalizeEmail(updatedProvider.email)
+    )) {
+      setChangeProvider(updatedProvider);
+    }
+
+    let supabaseMessage = "";
+
+    if (providerDbId) {
+      const uuidSlotIds = freeSlotsToDelete
+        .filter((slot) => isLikelyUuid(slot.id))
+        .map((slot) => slot.id);
+
+      if (uuidSlotIds.length > 0) {
+        const { error } = await supabase
+          .from("idopontok")
+          .delete()
+          .in("id", uuidSlotIds)
+          .eq("foglalt", false);
+
+        if (error) {
+          console.error(error);
+          supabaseMessage = "\n\nFigyelem: helyben töröltem a szabad időpontokat, de Supabase-ben nem sikerült minden UUID-s időpontot törölni.";
+        }
+      }
+
+      const nonUuidSlots = freeSlotsToDelete.filter((slot) => !isLikelyUuid(slot.id));
+
+      for (const slot of nonUuidSlots) {
+        const { error } = await supabase
+          .from("idopontok")
+          .delete()
+          .eq("szolgaltato_id", providerDbId)
+          .eq("datum", slot.date)
+          .eq("ido", String(slot.time).slice(0, 5))
+          .eq("foglalt", false);
+
+        if (error) {
+          console.error(error);
+          supabaseMessage = "\n\nFigyelem: helyben töröltem a szabad időpontokat, de Supabase-ben nem sikerült minden időpontot törölni.";
+        }
+      }
+
+      if (!supabaseMessage) {
+        supabaseMessage = `\n\nSupabase törlés: ${freeSlotsToDelete.length} szabad időpont törlése elküldve.`;
+      }
+    } else {
+      supabaseMessage = "\n\nFigyelem: helyben töröltem a szabad időpontokat, de Supabase törléshez Supabase-ben létező szolgáltatóval kell belépni.";
+    }
+
+    alert(`Szabad időpontok törölve.\n\nTörölt szabad időpontok: ${freeSlotsToDelete.length}\nA foglalt időpontok megmaradtak.${supabaseMessage}`);
+  }
+
+
   function getProviderStats(provider) {
     return getProviderStatsFromData({
       provider,
@@ -5528,6 +5675,17 @@ function renderProviderOverviewPanel(provider, panel) {
                 providerSmallButtonStyle={providerSmallButtonStyle}
                 dangerButtonStyle={dangerButtonStyle}
               />
+
+              {showProviderScheduleSettings && (
+                <div style={{ marginTop: "12px", marginBottom: "8px" }}>
+                  <button onClick={deleteFreeSlots} style={dangerButtonStyle}>
+                    Összes szabad időpont törlése
+                  </button>
+                  <p style={premiumHintStyle}>
+                    Csak a szabad időpontokat törli. A már lefoglalt időpontok megmaradnak.
+                  </p>
+                </div>
+              )}
 
 
               <h4 style={premiumSectionTitleStyle}>Válassz napot</h4>
