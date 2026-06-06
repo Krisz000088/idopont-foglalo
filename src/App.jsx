@@ -2260,10 +2260,33 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       return;
     }
 
+    const providerDbId = await getSupabaseProviderId(activeProvider);
+    const providerSource =
+      providers.find((provider) => idsEqual(provider.id, activeProvider.id)) ||
+      providers.find((provider) => providerDbId && idsEqual(provider.id, providerDbId)) ||
+      providers.find((provider) => normalizeEmail(provider.email) === normalizeEmail(activeProvider.email)) ||
+      activeProvider;
+
+    const providerBase = {
+      ...providerSource,
+      ...activeProvider,
+      id: providerDbId || activeProvider.id || providerSource.id,
+      workDays,
+      workStart,
+      workEnd,
+      slotLength: Number(slotLength),
+      weeksAhead: Number(weeksAhead),
+      exceptionDates: activeProvider.exceptionDates || providerSource.exceptionDates || [],
+      breaks: activeProvider.breaks || providerSource.breaks || [],
+      services: activeProvider.services || providerSource.services || [],
+      blockedEmails: activeProvider.blockedEmails || providerSource.blockedEmails || [],
+      notifications: activeProvider.notifications || providerSource.notifications || [],
+    };
+
     const newSlots = [];
     const today = new Date();
     const totalDays = Number(weeksAhead) * 7;
-    const exceptions = activeProvider.exceptionDates || [];
+    const exceptions = providerBase.exceptionDates || [];
 
     for (let i = 0; i < totalDays; i++) {
       const date = new Date(today);
@@ -2282,7 +2305,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       const end = endHour * 60 + endMinute;
 
       while (current + Number(slotLength) <= end) {
-        if (isSlotInsideProviderBreak(activeProvider, formattedDate, dayName, current, Number(slotLength))) {
+        if (isSlotInsideProviderBreak(providerBase, formattedDate, dayName, current, Number(slotLength))) {
           current += Number(slotLength);
           continue;
         }
@@ -2298,6 +2321,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
           booked: false,
           bookedBy: "",
           guestId: null,
+          guestEmail: "",
           guestPhone: "",
           service: "",
           note: "",
@@ -2307,12 +2331,15 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       }
     }
 
-    const existingSlots = Array.isArray(activeProvider.slots) ? activeProvider.slots : [];
+    const existingSlots = Array.isArray(providerBase.slots) ? providerBase.slots : [];
     const slotMap = new Map();
 
     existingSlots.forEach((slot) => {
       if (!slot || !slot.date || !slot.time) return;
-      slotMap.set(`${slot.date}-${slot.time}`, slot);
+      slotMap.set(`${slot.date}-${String(slot.time).slice(0, 5)}`, {
+        ...slot,
+        time: String(slot.time).slice(0, 5),
+      });
     });
 
     let addedSlotsCount = 0;
@@ -2328,39 +2355,65 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       }
     });
 
-    const mergedSlots = Array.from(slotMap.values()).sort((a, b) => {
+    let mergedSlots = Array.from(slotMap.values()).sort((a, b) => {
       const aValue = `${a.date} ${a.time}`;
       const bValue = `${b.date} ${b.time}`;
       return aValue.localeCompare(bValue);
     });
 
-    const updatedProviders = providers.map((p) =>
-      p.id === activeProvider.id
-        ? {
-            ...p,
-            workDays,
-            workStart,
-            workEnd,
-            slotLength: Number(slotLength),
-            weeksAhead: Number(weeksAhead),
-            exceptionDates: activeProvider.exceptionDates || [],
-            breaks: activeProvider.breaks || [],
-            services: activeProvider.services || [],
-            blockedEmails: activeProvider.blockedEmails || [],
-            slots: mergedSlots,
-          }
-        : p
-    );
+    const applyProviderSlots = (slotsToApply) => {
+      const normalizedProvider = {
+        ...providerBase,
+        slots: slotsToApply,
+      };
 
-    setProviders(updatedProviders);
-    setActiveProvider(updatedProviders.find((p) => p.id === activeProvider.id));
+      let providerWasUpdated = false;
+      const updatedProviders = providers.map((provider) => {
+        const sameProvider =
+          idsEqual(provider.id, activeProvider.id) ||
+          idsEqual(provider.id, normalizedProvider.id) ||
+          (providerDbId && idsEqual(provider.id, providerDbId)) ||
+          normalizeEmail(provider.email) === normalizeEmail(normalizedProvider.email);
+
+        if (!sameProvider) return provider;
+
+        providerWasUpdated = true;
+        return {
+          ...provider,
+          ...normalizedProvider,
+          id: providerDbId || provider.id || normalizedProvider.id,
+          slots: slotsToApply,
+        };
+      });
+
+      if (!providerWasUpdated) {
+        updatedProviders.push(normalizedProvider);
+      }
+
+      setProviders(updatedProviders);
+      setActiveProvider(normalizedProvider);
+
+      if (selectedProvider && (
+        idsEqual(selectedProvider.id, normalizedProvider.id) ||
+        normalizeEmail(selectedProvider.email) === normalizeEmail(normalizedProvider.email)
+      )) {
+        setSelectedProvider(normalizedProvider);
+      }
+
+      if (changeProvider && (
+        idsEqual(changeProvider.id, normalizedProvider.id) ||
+        normalizeEmail(changeProvider.email) === normalizeEmail(normalizedProvider.email)
+      )) {
+        setChangeProvider(normalizedProvider);
+      }
+    };
+
+    applyProviderSlots(mergedSlots);
     setProviderCalendarDate("");
 
     let supabaseMessage = "";
 
     if (addedSlots.length > 0) {
-      const providerDbId = await getSupabaseProviderId(activeProvider);
-
       if (providerDbId) {
         const rows = addedSlots.map((slot) => ({
           szolgaltato_id: providerDbId,
@@ -2375,6 +2428,54 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
           console.error(error);
           supabaseMessage = "\n\nFigyelem: az új időpontok helyben létrejöttek, de Supabase-be nem sikerült elmenteni őket.";
         } else {
+          const { data: savedSlotRows, error: savedSlotRowsError } = await supabase
+            .from("idopontok")
+            .select("*")
+            .eq("szolgaltato_id", providerDbId);
+
+          if (!savedSlotRowsError && Array.isArray(savedSlotRows)) {
+            const refreshedSlotMap = new Map();
+
+            mergedSlots.forEach((slot) => {
+              if (!slot || !slot.date || !slot.time) return;
+              refreshedSlotMap.set(`${slot.date}-${String(slot.time).slice(0, 5)}`, {
+                ...slot,
+                time: String(slot.time).slice(0, 5),
+              });
+            });
+
+            savedSlotRows.forEach((row) => {
+              if (!row?.datum || !row?.ido) return;
+
+              const timeText = formatTimeFromSupabase(row.ido);
+              const key = `${row.datum}-${timeText}`;
+              const existingSlot = refreshedSlotMap.get(key) || {};
+
+              refreshedSlotMap.set(key, {
+                ...existingSlot,
+                id: row.id || existingSlot.id || key,
+                date: row.datum,
+                day: getHungarianDayName(new Date(`${row.datum}T00:00:00`)),
+                time: timeText,
+                booked: Boolean(row.foglalt),
+                bookedBy: existingSlot.bookedBy || "",
+                guestId: existingSlot.guestId || null,
+                guestEmail: existingSlot.guestEmail || "",
+                guestPhone: existingSlot.guestPhone || "",
+                service: existingSlot.service || "",
+                note: existingSlot.note || "",
+              });
+            });
+
+            mergedSlots = Array.from(refreshedSlotMap.values()).sort((a, b) =>
+              `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`)
+            );
+
+            applyProviderSlots(mergedSlots);
+          } else if (savedSlotRowsError) {
+            console.warn("Az időpontok mentése sikerült, de a visszaolvasás nem sikerült:", savedSlotRowsError);
+          }
+
           supabaseMessage = `\n\nSupabase mentés: ${rows.length} új időpont elmentve.`;
         }
       } else {
