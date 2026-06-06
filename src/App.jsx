@@ -2886,36 +2886,84 @@ function renderProviderOverviewPanel(provider, panel) {
         <div style={panelBoxStyle}>
           <h4 style={{ marginTop: 0 }}>{title}</h4>
           {bookings.length === 0 && <p>Nincs találat.</p>}
-          {bookings.map((booking) => (
-            <div key={booking.id} style={smallCardStyle}>
-              <b>{booking.guestName || "Vendég"}</b> — {formatDateHu(booking.date)} {booking.time}
-              {booking.guestEmail && (
-                <>
-                  <br />
-                  Email: {booking.guestEmail}
-                </>
-              )}
-              {booking.guestPhone && (
-                <>
-                  <br />
-                  Telefon: {booking.guestPhone}
-                              {renderPhoneCallLink(booking.guestPhone)}
-                </>
-              )}
-              {booking.service && (
-                <>
-                  <br />
-                  Szolgáltatás: {booking.service}
-                </>
-              )}
-              {booking.note && (
-                <>
-                  <br />
-                  Megjegyzés: {booking.note}
-                </>
-              )}
-            </div>
-          ))}
+          {bookings.map((booking) => {
+            const matchingSlot = providerSlots.find(
+              (slot) =>
+                slot &&
+                (
+                  idsEqual(slot.id, booking.slotId) ||
+                  (slot.date === booking.date && String(slot.time || "").slice(0, 5) === String(booking.time || "").slice(0, 5))
+                )
+            );
+            const cancelSlot = matchingSlot || {
+              id: booking.slotId || booking.id,
+              date: booking.date,
+              day: booking.day,
+              time: booking.time,
+              booked: true,
+              bookedBy: booking.guestName || "Vendég",
+              guestId: booking.guestId,
+              guestEmail: booking.guestEmail,
+              guestPhone: booking.guestPhone,
+              service: booking.service,
+              note: booking.note,
+            };
+            const cancelKey = cancelSlot.id || booking.id;
+
+            return (
+              <div key={booking.id} style={smallCardStyle}>
+                <b>{booking.guestName || "Vendég"}</b> — {formatDateHu(booking.date)} {booking.time}
+                {booking.guestEmail && (
+                  <>
+                    <br />
+                    Email: {booking.guestEmail}
+                  </>
+                )}
+                {booking.guestPhone && (
+                  <>
+                    <br />
+                    Telefon: {booking.guestPhone}
+                    {renderPhoneCallLink(booking.guestPhone)}
+                  </>
+                )}
+                {booking.service && (
+                  <>
+                    <br />
+                    Szolgáltatás: {booking.service}
+                  </>
+                )}
+                {booking.note && (
+                  <>
+                    <br />
+                    Megjegyzés: {booking.note}
+                  </>
+                )}
+
+                <br /><br />
+
+                <input
+                  placeholder="Lemondás oka / üzenet a vendégnek - kötelező"
+                  value={providerCancelMessages[cancelKey] || ""}
+                  onChange={(e) =>
+                    setProviderCancelMessages({
+                      ...providerCancelMessages,
+                      [cancelKey]: e.target.value,
+                    })
+                  }
+                  style={{ ...premiumInlineInputStyle, width: "100%" }}
+                />
+
+                <br /><br />
+
+                <button
+                  onClick={() => cancelBookingByProvider(cancelSlot)}
+                  style={dangerButtonStyle}
+                >
+                  Időpont lemondása szolgáltatóként
+                </button>
+              </div>
+            );
+          })}
         </div>
       );
     }
@@ -3880,38 +3928,96 @@ function renderProviderOverviewPanel(provider, panel) {
   }
 
   async function cancelBookingByProvider(slot) {
-    if (!activeProvider || !slot.booked) return;
+    if (!activeProvider || !slot || !slot.booked) return;
 
-    const message = (providerCancelMessages[slot.id] || "").trim();
+    const cancelKey = slot.id || `${slot.date || ""}-${slot.time || ""}`;
+    const message = (providerCancelMessages[cancelKey] || providerCancelMessages[slot.id] || "").trim();
 
     if (!message) {
       alert("Lemondáskor kötelező üzenetet írni a vendégnek.");
       return;
     }
 
-    const updatedProviders = providers.map((provider) =>
-      provider.id === activeProvider.id
-        ? {
-            ...provider,
-            slots: provider.slots.map((s) =>
-              s.id === slot.id
-                ? { ...s, booked: false, bookedBy: "", guestId: null, guestEmail: "", guestPhone: "", service: "", note: "" }
-                : s
-            ),
-            notifications: [
-              {
-                id: Date.now(),
-                text: `${activeProvider.name} lemondta ${slot.bookedBy} időpontját: ${slot.date} ${slot.time}`,
-                note: message,
-              },
-              ...(provider.notifications || []),
-            ],
-          }
-        : provider
+    const bookingForSupabase =
+      guestBookings.find(
+        (booking) =>
+          booking &&
+          booking.active &&
+          (
+            idsEqual(booking.slotId, slot.id) ||
+            (
+              idsEqual(booking.providerId, activeProvider.id) &&
+              booking.date === slot.date &&
+              String(booking.time || "").slice(0, 5) === String(slot.time || "").slice(0, 5) &&
+              (
+                (slot.guestId && idsEqual(booking.guestId, slot.guestId)) ||
+                (slot.guestEmail && normalizeEmail(booking.guestEmail) === normalizeEmail(slot.guestEmail))
+              )
+            )
+          )
+      ) || {
+        id: null,
+        guestId: slot.guestId,
+        guestEmail: slot.guestEmail,
+        providerId: activeProvider.id,
+        slotId: slot.id,
+        date: slot.date,
+        time: slot.time,
+      };
+
+    const guestForNotification = guests.find(
+      (guest) =>
+        idsEqual(guest.id, slot.guestId) ||
+        normalizeEmail(guest.email) === normalizeEmail(slot.guestEmail || bookingForSupabase.guestEmail)
     );
 
+    const slotMatches = (candidateSlot) =>
+      candidateSlot &&
+      (
+        idsEqual(candidateSlot.id, slot.id) ||
+        (
+          candidateSlot.date === slot.date &&
+          String(candidateSlot.time || "").slice(0, 5) === String(slot.time || "").slice(0, 5)
+        )
+      );
+
+    const updatedProviders = providers.map((provider) => {
+      const sameProvider =
+        idsEqual(provider.id, activeProvider.id) ||
+        normalizeEmail(provider.email) === normalizeEmail(activeProvider.email);
+
+      if (!sameProvider) return provider;
+
+      return {
+        ...provider,
+        slots: (provider.slots || []).map((providerSlot) =>
+          slotMatches(providerSlot)
+            ? { ...providerSlot, booked: false, bookedBy: "", guestId: null, guestEmail: "", guestPhone: "", service: "", note: "" }
+            : providerSlot
+        ),
+        notifications: [
+          {
+            id: Date.now(),
+            text: `${activeProvider.name} lemondta ${slot.bookedBy || bookingForSupabase.guestName || "Vendég"} időpontját: ${slot.date} ${slot.time}`,
+            note: message,
+          },
+          ...(provider.notifications || []),
+        ],
+      };
+    });
+
     const updatedBookings = guestBookings.map((booking) =>
-      booking.slotId === slot.id && booking.active
+      booking &&
+      booking.active &&
+      (
+        idsEqual(booking.id, bookingForSupabase.id) ||
+        idsEqual(booking.slotId, slot.id) ||
+        (
+          idsEqual(booking.providerId, activeProvider.id) &&
+          booking.date === slot.date &&
+          String(booking.time || "").slice(0, 5) === String(slot.time || "").slice(0, 5)
+        )
+      )
         ? {
             ...booking,
             active: false,
@@ -3922,7 +4028,7 @@ function renderProviderOverviewPanel(provider, panel) {
     );
 
     const updatedGuests = guests.map((guest) =>
-      guest.id === slot.guestId
+      guestForNotification && idsEqual(guest.id, guestForNotification.id)
         ? {
             ...guest,
             notifications: [
@@ -3930,6 +4036,7 @@ function renderProviderOverviewPanel(provider, panel) {
                 id: Date.now(),
                 text: `${activeProvider.name} lemondta az időpontodat: ${slot.date} ${slot.time}`,
                 message,
+                type: "provider_cancel",
               },
               ...(guest.notifications || []),
             ],
@@ -3941,16 +4048,18 @@ function renderProviderOverviewPanel(provider, panel) {
       id: Date.now(),
       providerId: activeProvider.id,
       providerName: activeProvider.name,
-      guestId: slot.guestId,
-      guestName: slot.bookedBy,
-      slotId: slot.id,
+      guestId: slot.guestId || bookingForSupabase.guestId,
+      guestName: slot.bookedBy || bookingForSupabase.guestName || guestForNotification?.name || "Vendég",
+      guestEmail: slot.guestEmail || bookingForSupabase.guestEmail || guestForNotification?.email || "",
+      slotId: slot.id || bookingForSupabase.slotId,
       date: slot.date,
       time: slot.time,
       from: "provider",
       fromName: activeProvider.name,
-      toName: slot.bookedBy,
+      toName: slot.bookedBy || bookingForSupabase.guestName || guestForNotification?.name || "Vendég",
       text: message,
-      type: "cancel",
+      type: "provider_cancel",
+      createdAt: new Date().toISOString(),
     };
 
     setMessages([cancelMessage, ...messages]);
@@ -3958,11 +4067,13 @@ function renderProviderOverviewPanel(provider, panel) {
     setGuestBookings(updatedBookings);
     setGuests(updatedGuests);
 
-    const freshProvider = updatedProviders.find((p) => p.id === activeProvider.id);
-    setActiveProvider(freshProvider);
+    const freshProvider = updatedProviders.find(
+      (provider) => idsEqual(provider.id, activeProvider.id) || normalizeEmail(provider.email) === normalizeEmail(activeProvider.email)
+    );
+    setActiveProvider(freshProvider || activeProvider);
 
     if (selectedProvider && idsEqual(selectedProvider.id, activeProvider.id)) {
-      setSelectedProvider(freshProvider);
+      setSelectedProvider(freshProvider || activeProvider);
     }
 
     if (activeGuest) {
@@ -3971,20 +4082,14 @@ function renderProviderOverviewPanel(provider, panel) {
 
     const supabaseMessageResult = await saveMessageToSupabase(cancelMessage, {
       provider: activeProvider,
-      guest: guests.find((guest) => guest.id === slot.guestId),
+      guest: guestForNotification || {
+        id: bookingForSupabase.guestId,
+        name: bookingForSupabase.guestName,
+        email: bookingForSupabase.guestEmail,
+        phone: bookingForSupabase.guestPhone,
+      },
       slot,
     });
-
-    const bookingForSupabase =
-      guestBookings.find((booking) => booking.active && booking.slotId === slot.id) || {
-        id: null,
-        guestId: slot.guestId,
-        guestEmail: slot.guestEmail,
-        providerId: activeProvider.id,
-        slotId: slot.id,
-        date: slot.date,
-        time: slot.time,
-      };
 
     const supabaseCancelResult = await syncBookingCancellationToSupabase(
       bookingForSupabase,
@@ -3992,7 +4097,11 @@ function renderProviderOverviewPanel(provider, panel) {
       slot
     );
 
-    setProviderCancelMessages({ ...providerCancelMessages, [slot.id]: "" });
+    setProviderCancelMessages({ ...providerCancelMessages, [cancelKey]: "", [slot.id]: "" });
+
+    if (supabaseCancelResult.ok) {
+      await loadSupabaseData();
+    }
 
     if (supabaseMessageResult.ok && supabaseCancelResult.ok) {
       alert("A szolgáltató lemondta az időpontot. Az üzenet elmentve, az időpont Supabase-ben is felszabadítva.");
@@ -5826,6 +5935,8 @@ function renderProviderOverviewPanel(provider, panel) {
                 premiumInlineInputStyle={premiumInlineInputStyle}
               />
 
+              {renderGuestStats(activeGuest)}
+
               <div style={premiumPanelStyle}>
                 <button
                   onClick={() => setShowGuestProviderAdd(!showGuestProviderAdd)}
@@ -5952,9 +6063,6 @@ function renderProviderOverviewPanel(provider, panel) {
                   </button>
                 </>
               )}
-
-              {renderGuestStats(activeGuest)}
-
 
               <br />
               <button onClick={() => setActiveGuest(null)} style={secondaryGhostButtonStyle}>Vendég kijelentkezés</button>
