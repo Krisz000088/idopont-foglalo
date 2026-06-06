@@ -312,6 +312,24 @@ function App() {
     }));
   }
 
+  function markProviderOverviewPanelUnread(providerId, panelKey, previousValue = 0) {
+    if (!providerId || !panelKey) return;
+
+    setProviderSeenOverviewCounts((currentCounts) => ({
+      ...currentCounts,
+      [getOverviewSeenKey(providerId, panelKey)]: Number(previousValue || 0),
+    }));
+  }
+
+  function markGuestOverviewPanelUnread(guestId, panelKey, previousValue = 0) {
+    if (!guestId || !panelKey) return;
+
+    setGuestSeenOverviewCounts((currentCounts) => ({
+      ...currentCounts,
+      [getOverviewSeenKey(guestId, panelKey)]: Number(previousValue || 0),
+    }));
+  }
+
   function normalizePhoneForCall(phone) {
     const cleaned = String(phone || "").trim().replace(/[^+0-9]/g, "");
 
@@ -2838,6 +2856,7 @@ A foglalt időpontok megmaradtak.${supabaseMessage}`);
 
     setProviders(updatedProviders);
     setActiveProvider({ ...activeProvider, notifications: [] });
+    markProviderOverviewPanelUnread(activeProvider.id, "providerNotifications", 0);
     alert("Értesítések törölve.");
   }
 
@@ -3150,6 +3169,7 @@ function renderProviderOverviewPanel(provider, panel) {
 
     setGuests(updatedGuests);
     setActiveGuest({ ...activeGuest, notifications: [] });
+    markGuestOverviewPanelUnread(activeGuest.id, "guestNotifications", 0);
     alert("Értesítések törölve.");
   }
 
@@ -3679,6 +3699,8 @@ function renderProviderOverviewPanel(provider, panel) {
 
     if (!confirmed) return;
 
+    const providerNotificationCountBeforeChange = getVisibleProviderNotifications(providerForChange).length;
+
     const updatedProviders = providers.map((provider) =>
       idsEqual(provider.id, booking.providerId)
         ? {
@@ -3762,6 +3784,7 @@ function renderProviderOverviewPanel(provider, panel) {
     setGuestBookings(updatedBookings);
     setMessages([changeMessage, ...messages]);
     refreshProviderViews(updatedProviders, booking.providerId);
+    markProviderOverviewPanelUnread(booking.providerId, "providerNotifications", providerNotificationCountBeforeChange);
 
     const oldSlotForSupabase = providerForChange.slots.find((slot) => idsEqual(slot.id, booking.slotId)) || {
       id: booking.slotId,
@@ -3812,6 +3835,9 @@ function renderProviderOverviewPanel(provider, panel) {
     if (!confirm(`Biztosan lemondod ezt az időpontot?\n\n${booking.providerName || "Szolgáltató"} - ${formatDateHu(booking.date)} ${booking.time}`)) return;
 
     const providerForSupabase = providers.find((provider) => idsEqual(provider.id, booking.providerId));
+    const providerNotificationCountBeforeCancel = providerForSupabase
+      ? getVisibleProviderNotifications(providerForSupabase).length
+      : 0;
     const slotForSupabase = providerForSupabase && Array.isArray(providerForSupabase.slots)
       ? providerForSupabase.slots.find((slot) => slot.id === booking.slotId)
       : {
@@ -3891,6 +3917,7 @@ function renderProviderOverviewPanel(provider, panel) {
     setMessages([cancelMessage, ...messages]);
 
     refreshProviderViews(updatedProviders, booking.providerId);
+    markProviderOverviewPanelUnread(booking.providerId, "providerNotifications", providerNotificationCountBeforeCancel);
 
     const supabaseCancelResult = await syncBookingCancellationToSupabase(
       booking,
@@ -3970,6 +3997,9 @@ function renderProviderOverviewPanel(provider, panel) {
         idsEqual(guest.id, slot.guestId) ||
         normalizeEmail(guest.email) === normalizeEmail(slot.guestEmail || bookingForSupabase.guestEmail)
     );
+    const guestNotificationCountBeforeCancel = guestForNotification
+      ? getVisibleGuestNotifications(guestForNotification).length
+      : 0;
 
     const slotMatches = (candidateSlot) =>
       candidateSlot &&
@@ -4078,6 +4108,10 @@ function renderProviderOverviewPanel(provider, panel) {
 
     if (activeGuest) {
       refreshGuestViews(updatedGuests, activeGuest.id);
+    }
+
+    if (guestForNotification) {
+      markGuestOverviewPanelUnread(guestForNotification.id, "guestNotifications", guestNotificationCountBeforeCancel);
     }
 
     const supabaseMessageResult = await saveMessageToSupabase(cancelMessage, {
@@ -4304,8 +4338,12 @@ function renderProviderOverviewPanel(provider, panel) {
         : guest
     );
 
+    const guestForMessage = guests.find((guest) => idsEqual(guest.id, slot.guestId));
+    const guestNotificationCountBeforeMessage = guestForMessage ? getVisibleGuestNotifications(guestForMessage).length : 0;
+
     setGuests(updatedGuests);
     refreshGuestViews(updatedGuests, slot.guestId);
+    markGuestOverviewPanelUnread(slot.guestId, "guestNotifications", guestNotificationCountBeforeMessage);
 
     const supabaseMessageResult = await saveMessageToSupabase(newMessage, {
       provider: activeProvider,
@@ -4462,8 +4500,11 @@ function renderProviderOverviewPanel(provider, panel) {
         : provider
     );
 
+    const providerNotificationCountBeforeMessage = provider ? getVisibleProviderNotifications(provider).length : 0;
+
     setProviders(updatedProviders);
     refreshProviderViews(updatedProviders, booking.providerId);
+    markProviderOverviewPanelUnread(booking.providerId, "providerNotifications", providerNotificationCountBeforeMessage);
 
     const supabaseMessageResult = await saveMessageToSupabase(newMessage, {
       provider,
