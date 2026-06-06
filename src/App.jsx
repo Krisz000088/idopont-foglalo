@@ -21,6 +21,15 @@ import {
   isExceptionDate,
   isFullyBookedDate,
 } from "./utils/calendarHelpers";
+import {
+  getBookingsForProviderDateFromList,
+  getGuestActiveBookingsFromList,
+  getGuestBookingsForProviderFromList,
+  getGuestCancelledBookingKeyValue,
+  getGuestCancelledBookingsFromList,
+  getProviderGuestBookingSummaryFromList,
+  guestAlreadyHasBookingOnDateFromList,
+} from "./utils/guestBookingHelpers";
 import HomePage from "./components/HomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import DeveloperContact from "./components/DeveloperContact";
@@ -607,11 +616,7 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
   }
 
   function getBookingsForProviderDate(provider, date) {
-    if (!provider || !date) return [];
-
-    return guestBookings.filter(
-      (booking) => booking.active && idsEqual(booking.providerId, provider.id) && booking.date === date
-    );
+    return getBookingsForProviderDateFromList(guestBookings, idsEqual, provider, date);
   }
 
   
@@ -955,15 +960,7 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
   }
 
   function guestAlreadyHasBookingOnDate(providerId, guestEmail, date) {
-    if (!guestEmail || !date) return false;
-
-    return guestBookings.some(
-      (booking) =>
-        booking.active &&
-        idsEqual(booking.providerId, providerId) &&
-        booking.date === date &&
-        (booking.guestEmail || "").toLowerCase() === guestEmail.toLowerCase()
-    );
+    return guestAlreadyHasBookingOnDateFromList(guestBookings, idsEqual, providerId, guestEmail, date);
   }
 
   function renderCalendar(provider, selectedDate, onSelectDate) {
@@ -2652,23 +2649,15 @@ function renderProviderOverviewPanel(provider, panel) {
 
 
   function getGuestActiveBookings(guest) {
-    if (!guest) return [];
-
-    return guestBookings
-      .filter((booking) => booking && booking.active && idsEqual(booking.guestId, guest.id))
-      .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+    return getGuestActiveBookingsFromList(guestBookings, idsEqual, guest);
   }
 
   function getGuestCancelledBookingKey(guestId, booking) {
-    return `${normalizeId(guestId)}|${normalizeId(booking?.id)}|${String(booking?.date || "").trim()}|${String(booking?.time || "").trim()}`;
+    return getGuestCancelledBookingKeyValue(normalizeId, guestId, booking);
   }
 
   function getGuestCancelledBookings(guest) {
-    if (!guest) return [];
-
-    return guestBookings
-      .filter((booking) => booking && idsEqual(booking.guestId, guest.id) && !booking.active && (booking.cancelledByGuest || booking.cancelledByProvider))
-      .sort((a, b) => `${b.date || ""} ${b.time || ""}`.localeCompare(`${a.date || ""} ${a.time || ""}`));
+    return getGuestCancelledBookingsFromList(guestBookings, idsEqual, guest);
   }
 
   function getVisibleGuestCancelledBookings(guest) {
@@ -2923,35 +2912,11 @@ function renderProviderOverviewPanel(provider, panel) {
 
 
   function getGuestBookingsForProvider(providerId, guest) {
-    if (!providerId || !guest) return [];
-
-    const guestEmailValue = normalizeEmail(guest.email);
-
-    return guestBookings
-      .filter((booking) => {
-        if (!booking || !idsEqual(booking.providerId, providerId) || !booking.active) return false;
-        if (booking.guestId && idsEqual(booking.guestId, guest.id)) return true;
-        return guestEmailValue && normalizeEmail(booking.guestEmail) === guestEmailValue;
-      })
-      .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+    return getGuestBookingsForProviderFromList(guestBookings, idsEqual, normalizeEmail, providerId, guest);
   }
 
   function getProviderGuestBookingSummary(providerId, guest) {
-    const relatedBookings = getGuestBookingsForProvider(providerId, guest);
-    const now = new Date();
-
-    const pastBookings = relatedBookings
-      .filter((booking) => new Date(`${booking.date}T${booking.time || "00:00"}`).getTime() < now.getTime())
-      .sort((a, b) => `${b.date || ""} ${b.time || ""}`.localeCompare(`${a.date || ""} ${a.time || ""}`));
-
-    const futureBookings = relatedBookings
-      .filter((booking) => new Date(`${booking.date}T${booking.time || "00:00"}`).getTime() >= now.getTime())
-      .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
-
-    return {
-      lastBooking: pastBookings[0] || null,
-      futureBookings,
-    };
+    return getProviderGuestBookingSummaryFromList(guestBookings, idsEqual, normalizeEmail, providerId, guest);
   }
 
   function renderRegisteredGuestsForProvider(provider) {
