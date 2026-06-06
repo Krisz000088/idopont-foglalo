@@ -49,18 +49,6 @@ import {
   hasUnseenOverviewItemValue,
   isRealGuestMessage,
 } from "./utils/messageHelpers";
-import {
-  filterExistingProviderIds,
-  formatTimeFromSupabase,
-  idsEqual,
-  isMissingSupabaseTableError,
-  isValidGuestCode,
-  normalizeEmail,
-  normalizeGuestCode,
-  normalizeId,
-  slotOverlapsBreak,
-  timeToMinutes,
-} from "./utils/appHelpers";
 import HomePage from "./components/HomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import DeveloperContact from "./components/DeveloperContact";
@@ -243,9 +231,22 @@ function App() {
     return () => window.removeEventListener("popstate", handlePopState);
   }, [mode, activeProvider, activeGuest]);
 
+  function formatTimeFromSupabase(timeValue) {
+    if (!timeValue) return "";
+    return String(timeValue).slice(0, 5);
+  }
 
+  function normalizeEmail(email) {
+    return String(email || "").trim().toLowerCase();
+  }
 
+  function normalizeId(value) {
+    return String(value ?? "").trim();
+  }
 
+  function idsEqual(firstValue, secondValue) {
+    return normalizeId(firstValue) !== "" && normalizeId(firstValue) === normalizeId(secondValue);
+  }
 
   function getProviderNotificationKey(providerId, notification) {
     return getProviderNotificationKeyValue(normalizeId, providerId, notification);
@@ -351,6 +352,16 @@ function App() {
     );
   }
 
+  function isMissingSupabaseTableError(error) {
+    const message = String(error?.message || "").toLowerCase();
+    return (
+      error?.code === "42P01" ||
+      error?.code === "PGRST205" ||
+      message.includes("could not find the table") ||
+      message.includes("schema cache") ||
+      message.includes("does not exist")
+    );
+  }
 
   async function loadProviderGuestLinksFromSupabase() {
     const { data, error } = await supabase.from("vendeg_szolgaltatok").select("*");
@@ -389,6 +400,12 @@ function App() {
     }
   }
 
+  function filterExistingProviderIds(providerIds, providerList) {
+    if (!Array.isArray(providerIds)) return [];
+    const existingProviderIds = new Set((providerList || []).map((provider) => normalizeId(provider.id)));
+
+    return [...new Set(providerIds.filter((providerId) => existingProviderIds.has(normalizeId(providerId))))];
+  }
 
   async function copyToClipboard(text) {
     try {
@@ -1023,7 +1040,20 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
     );
   }
 
+  function normalizeGuestCode(code) {
+    return String(code || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^A-Z0-9_-]/g, "");
+  }
 
+  function isValidGuestCode(code) {
+    const normalizedCode = normalizeGuestCode(code);
+    const visibleLength = normalizedCode.replace(/[-_]/g, "").length;
+
+    return normalizedCode.length >= 6 && visibleLength >= 3 && /^[A-Z0-9_-]+$/.test(normalizedCode);
+  }
 
   async function createProvider() {
     const normalizedGuestCode = normalizeGuestCode(guestCode);
@@ -2126,7 +2156,17 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     alert("A nap újra munkanapként jelenik meg.");
   }
+  function timeToMinutes(time) {
+    const [hour = 0, minute = 0] = String(time || "00:00").split(":").map(Number);
+    return hour * 60 + minute;
+  }
 
+  function slotOverlapsBreak(slotStartMinute, slotLengthMinutes, breakItem) {
+    const breakStartMinute = timeToMinutes(breakItem.start);
+    const breakEndMinute = timeToMinutes(breakItem.end);
+    const slotEndMinute = slotStartMinute + Number(slotLengthMinutes);
+    return slotStartMinute < breakEndMinute && slotEndMinute > breakStartMinute;
+  }
 
   function isSlotInsideProviderBreak(provider, dateText, dayName, slotStartMinute, slotLengthMinutes) {
     const breaks = Array.isArray(provider?.breaks) ? provider.breaks : [];
