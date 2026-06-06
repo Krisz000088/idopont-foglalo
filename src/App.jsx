@@ -30,6 +30,12 @@ import {
   getProviderGuestBookingSummaryFromList,
   guestAlreadyHasBookingOnDateFromList,
 } from "./utils/guestBookingHelpers";
+import {
+  getProviderActiveBookingsSortedFromList,
+  getProviderFreeSlotsFromProvider,
+  getProviderStatsFromData,
+  getRegisteredGuestsForProviderFromList,
+} from "./utils/providerBookingHelpers";
 import HomePage from "./components/HomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import DeveloperContact from "./components/DeveloperContact";
@@ -2381,50 +2387,16 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
   }
 
   function getProviderStats(provider) {
-    if (!provider) {
-      return {
-        registeredGuests: 0,
-        activeBookings: 0,
-        todayBookings: 0,
-        upcomingBookings: 0,
-        freeSlots: 0,
-        bookedSlots: 0,
-        blockedGuests: 0,
-        unreadLikeMessages: 0,
-        nextBooking: null,
-      };
-    }
-
-    const todayText = formatDate(new Date());
-    const providerBookings = guestBookings.filter(
-      (booking) => booking.active && idsEqual(booking.providerId, provider.id)
-    );
-    const providerSlots = Array.isArray(provider.slots) ? provider.slots : [];
-    const providerMessages = getMessagesForProvider(provider.id);
-    const registeredGuests = getRegisteredGuestsForProvider(provider.id);
-
-    const upcomingBookings = providerBookings.filter(
-      (booking) => booking.date && booking.date >= todayText
-    );
-
-    const sortedUpcomingBookings = [...upcomingBookings].sort((a, b) => {
-      const aValue = `${a.date || ""} ${a.time || ""}`;
-      const bValue = `${b.date || ""} ${b.time || ""}`;
-      return aValue.localeCompare(bValue);
+    return getProviderStatsFromData({
+      provider,
+      guestBookings,
+      guests,
+      idsEqual,
+      todayText: formatDate(new Date()),
+      providerMessages: provider ? getMessagesForProvider(provider.id) : [],
+      visibleProviderGuestMessages: provider ? getVisibleProviderGuestMessages(provider.id) : [],
+      visibleProviderNotifications: getVisibleProviderNotifications(provider),
     });
-
-    return {
-      registeredGuests: registeredGuests.length,
-      activeBookings: providerBookings.length,
-      todayBookings: providerBookings.filter((booking) => booking.date === todayText).length,
-      upcomingBookings: upcomingBookings.length,
-      freeSlots: providerSlots.filter((slot) => slot && !slot.booked).length,
-      bookedSlots: providerBookings.length,
-      blockedGuests: Array.isArray(provider.blockedEmails) ? provider.blockedEmails.length : 0,
-      unreadLikeMessages: getVisibleProviderGuestMessages(provider.id).length,
-      providerNotifications: getVisibleProviderNotifications(provider).length,
-      nextBooking: sortedUpcomingBookings[0] || null,
-    };
   }
 
   function renderProviderStats(provider) {
@@ -2499,9 +2471,7 @@ function renderProviderOverviewPanel(provider, panel) {
     if (!provider || !panel) return null;
 
     const todayText = formatDate(new Date());
-    const providerBookings = guestBookings
-      .filter((booking) => booking.active && idsEqual(booking.providerId, provider.id))
-      .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+    const providerBookings = getProviderActiveBookingsSortedFromList(guestBookings, idsEqual, provider.id);
     const providerSlots = Array.isArray(provider.slots) ? provider.slots : [];
     const guestMessages = getVisibleProviderGuestMessages(provider.id);
     const providerNotifications = getVisibleProviderNotifications(provider);
@@ -2573,9 +2543,7 @@ function renderProviderOverviewPanel(provider, panel) {
     }
 
     if (panel === "freeSlots") {
-      const freeSlots = providerSlots
-        .filter((slot) => slot && !slot.booked)
-        .sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`));
+      const freeSlots = getProviderFreeSlotsFromProvider(provider);
 
       return (
         <div style={panelBoxStyle}>
@@ -2903,12 +2871,9 @@ function renderProviderOverviewPanel(provider, panel) {
 
 
   function getRegisteredGuestsForProvider(providerId) {
-    if (!providerId) return [];
-
-    return guests
-      .filter((guest) => Array.isArray(guest.providerIds) && guest.providerIds.some((guestProviderId) => idsEqual(guestProviderId, providerId)))
-      .sort((a, b) => (a.name || "").localeCompare(b.name || "", "hu"));
+    return getRegisteredGuestsForProviderFromList(guests, idsEqual, providerId);
   }
+
 
 
   function getGuestBookingsForProvider(providerId, guest) {
