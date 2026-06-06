@@ -1031,7 +1031,7 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
       exceptionDates: [...new Set(provider.exceptionDates || [])].sort(),
       breaks: Array.isArray(provider.breaks) ? provider.breaks : [],
       blockedEmails: [...new Set(provider.blockedEmails || [])],
-      slots: mergeLocalSlotsIntoProvider(provider),
+      slots: (provider.slots || []).sort((a, b) => `${a.date || ""} ${a.time || ""}`.localeCompare(`${b.date || ""} ${b.time || ""}`)),
       notifications: getVisibleProviderNotifications(provider),
     }));
 
@@ -2759,13 +2759,24 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
       }
 
       if (!supabaseMessage) {
-        supabaseMessage = `\n\nSupabase törlés: ${freeSlotsToDelete.length} szabad időpont törlése elküldve.`;
+        supabaseMessage = `\n\nSupabase törlés lefutott: ${freeSlotsToDelete.length} szabad időpont törölve vagy törlésre ellenőrizve.`;
       }
     } else {
       supabaseMessage = "\n\nFigyelem: helyben töröltem a szabad időpontokat, de Supabase törléshez Supabase-ben létező szolgáltatóval kell belépni.";
     }
 
-    alert(`Szabad időpontok törölve.\n\nTörölt szabad időpontok: ${freeSlotsToDelete.length}\nA foglalt időpontok megmaradtak.${supabaseMessage}`);
+    try {
+      localStorage.setItem("providers", JSON.stringify(updatedProviders));
+    } catch (error) {
+      console.warn("A szabad időpontok törlése után a helyi mentés frissítése nem sikerült:", error);
+    }
+
+    await loadSupabaseData();
+
+    alert(`Szabad időpontok törölve.
+
+Törölt szabad időpontok: ${freeSlotsToDelete.length}
+A foglalt időpontok megmaradtak.${supabaseMessage}`);
   }
 
 
