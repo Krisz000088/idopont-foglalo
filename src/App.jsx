@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "./supabase";
 import { buildHtmlEmail, buildPlainTextEmail } from "./utils/emailHelpers";
+import { formatDate, formatDateHu, getHungarianDayName, getSlotDateTime, isSlotBookable, isSlotInPast } from "./utils/dateHelpers";
 import HomePage from "./components/HomePage";
 import ForgotPassword from "./components/ForgotPassword";
 import DeveloperContact from "./components/DeveloperContact";
@@ -904,47 +905,6 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
     };
   }
 
-  function getHungarianDayName(date) {
-    const index = date.getDay();
-    const map = {
-      1: "Hétfő",
-      2: "Kedd",
-      3: "Szerda",
-      4: "Csütörtök",
-      5: "Péntek",
-      6: "Szombat",
-      0: "Vasárnap",
-    };
-    return map[index];
-  }
-
-  function formatDate(date) {
-    return date.toISOString().split("T")[0];
-  }
-
-  function getSlotDateTime(slot) {
-    if (!slot || !slot.date || !slot.time) return null;
-
-    const normalizedTime = String(slot.time).slice(0, 5);
-    const dateTime = new Date(`${slot.date}T${normalizedTime}:00`);
-
-    if (Number.isNaN(dateTime.getTime())) return null;
-
-    return dateTime;
-  }
-
-  function isSlotInPast(slot) {
-    const slotDateTime = getSlotDateTime(slot);
-
-    if (!slotDateTime) return true;
-
-    return slotDateTime.getTime() <= Date.now();
-  }
-
-  function isSlotBookable(slot) {
-    return Boolean(slot && slot.date && slot.time && !slot.booked && !isSlotInPast(slot));
-  }
-
   function getProviderLatestFutureSlotDate(provider) {
     if (!provider || !Array.isArray(provider.slots)) return null;
 
@@ -1021,13 +981,6 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
     if (!provider || !date || !Array.isArray(provider.slots)) return false;
 
     return provider.slots.some((slot) => slot && slot.date === date && slot.booked);
-  }
-
-  function formatDateHu(dateText) {
-    if (!dateText) return "-";
-
-    const [year, month, day] = dateText.split("-");
-    return `${year}.${month}.${day}.`;
   }
 
   function groupDatesByMonth(dates) {
