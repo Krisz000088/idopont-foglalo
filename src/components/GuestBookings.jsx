@@ -46,12 +46,14 @@ function GuestBookings({
         </div>
         {cancelledBookings.length === 0 && <p>Nincs lemondott időpont.</p>}
         {cancelledBookings.map((booking) => (
-          <div key={booking.id} style={premiumListCardStyle}>
+          <div key={`${booking.id || booking.slotId}-${booking.date || ""}-${booking.time || ""}`} style={premiumListCardStyle}>
             <b>{booking.providerName}</b>
             <br />
             Lemondott időpont: {formatDateHu(booking.date)} — {booking.day || ""} — {booking.time}
             <br />
-            {booking.cancelledByGuest ? "Te mondtad le ezt az időpontot." : "A szolgáltató mondta le ezt az időpontot."}
+            {booking.cancelledByGuest && "Vendég által lemondva."}
+            {booking.cancelledByProvider && "Szolgáltató által lemondva."}
+            {!booking.cancelledByGuest && !booking.cancelledByProvider && "Lemondott időpont."}
             {booking.providerCancelMessage && (
               <>
                 <br />

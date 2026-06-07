@@ -312,21 +312,21 @@ function App() {
     }));
   }
 
-  function markProviderOverviewPanelUnread(providerId, panelKey, previousValue = 0) {
+  function markProviderOverviewPanelUnread(providerId, panelKey, previousValue = -1) {
     if (!providerId || !panelKey) return;
 
     setProviderSeenOverviewCounts((currentCounts) => ({
       ...currentCounts,
-      [getOverviewSeenKey(providerId, panelKey)]: Number(previousValue || 0),
+      [getOverviewSeenKey(providerId, panelKey)]: Number(previousValue ?? -1),
     }));
   }
 
-  function markGuestOverviewPanelUnread(guestId, panelKey, previousValue = 0) {
+  function markGuestOverviewPanelUnread(guestId, panelKey, previousValue = -1) {
     if (!guestId || !panelKey) return;
 
     setGuestSeenOverviewCounts((currentCounts) => ({
       ...currentCounts,
-      [getOverviewSeenKey(guestId, panelKey)]: Number(previousValue || 0),
+      [getOverviewSeenKey(guestId, panelKey)]: Number(previousValue ?? -1),
     }));
   }
 
@@ -918,6 +918,31 @@ async function sendBookingCreatedEmails({ booking, provider, guest }) {
         oldDate: "",
         oldTime: "",
       };
+    });
+
+
+    const localCancelledBookings = localBookingCandidates
+      .filter((booking) => booking && !booking.active && (booking.cancelledByGuest || booking.cancelledByProvider))
+      .map((booking) => ({
+        ...booking,
+        active: false,
+        cancelledByGuest: booking.cancelledByGuest === true,
+        cancelledByProvider: booking.cancelledByProvider === true,
+        providerCancelMessage: booking.providerCancelMessage || "",
+      }));
+
+    const loadedBookingKeys = new Set(
+      loadedBookings.map((booking) =>
+        `${normalizeId(booking.id)}|${normalizeId(booking.slotId)}|${String(booking.date || "").trim()}|${String(booking.time || "").trim()}`
+      )
+    );
+
+    localCancelledBookings.forEach((booking) => {
+      const cancelledKey = `${normalizeId(booking.id)}|${normalizeId(booking.slotId)}|${String(booking.date || "").trim()}|${String(booking.time || "").trim()}`;
+      if (!loadedBookingKeys.has(cancelledKey)) {
+        loadedBookings.push(booking);
+        loadedBookingKeys.add(cancelledKey);
+      }
     });
 
     const loadedMessages = messageRows.map((row) => {
@@ -2159,7 +2184,25 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
 
     const cancelMessage = "A szolgáltató ezt a napot nem dolgozik napnak jelölte, ezért az időpontod törölve lett.";
     const affectedSlotIds = bookingsOnDate.map((booking) => booking.slotId);
-    const affectedGuestIds = bookingsOnDate.map((booking) => booking.guestId);
+    const affectedGuestIds = [...new Set(bookingsOnDate.map((booking) => booking.guestId).filter(Boolean))];
+    const providerNotificationCountBeforeException = getVisibleProviderNotifications(activeProvider).length;
+
+    const bookingMatchesAffectedDate = (booking) =>
+      booking &&
+      booking.active &&
+      idsEqual(booking.providerId, activeProvider.id) &&
+      booking.date === exceptionDate;
+
+    const slotMatchesAffectedBooking = (slot) =>
+      slot &&
+      bookingsOnDate.some(
+        (booking) =>
+          idsEqual(slot.id, booking.slotId) ||
+          (
+            slot.date === booking.date &&
+            String(slot.time || "").slice(0, 5) === String(booking.time || "").slice(0, 5)
+          )
+      );
 
     const updatedProviders = providers.map((provider) =>
       provider.id === activeProvider.id
@@ -2167,7 +2210,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
             ...provider,
             exceptionDates: [...currentExceptions, exceptionDate],
             slots: (provider.slots || []).map((slot) =>
-              affectedSlotIds.includes(slot.id)
+              slotMatchesAffectedBooking(slot)
                 ? { ...slot, booked: false, bookedBy: "", guestId: null, guestEmail: "", guestPhone: "", service: "", note: "" }
                 : slot
             ),
@@ -2177,6 +2220,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
                     id: Date.now(),
                     text: `${bookingsOnDate.length} foglalás törölve, mert ${formatDateHu(exceptionDate)} nem dolgozik nap lett.`,
                     note: cancelMessage,
+                    type: "provider_cancel",
                   },
                   ...(provider.notifications || []),
                 ]
@@ -2186,8 +2230,8 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     );
 
     const updatedBookings = guestBookings.map((booking) =>
-      affectedSlotIds.includes(booking.slotId) && booking.active
-        ? { ...booking, active: false, cancelledByProvider: true, providerCancelMessage: cancelMessage }
+      bookingMatchesAffectedDate(booking)
+        ? { ...booking, active: false, cancelledByProvider: true, cancelledByGuest: false, providerCancelMessage: cancelMessage }
         : booking
     );
 
@@ -2200,6 +2244,7 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
                 id: Date.now() + Math.random(),
                 text: `${activeProvider.name} törölte az időpontodat, mert ${formatDateHu(exceptionDate)} nem dolgozik nap lett.`,
                 message: cancelMessage,
+                type: "provider_cancel",
               },
               ...(guest.notifications || []),
             ],
@@ -2228,6 +2273,11 @@ Ha igen, az érintett időpontok felszabadulnak, a vendégek pedig értesítést
     setGuests(updatedGuests);
     setMessages([...cancelMessages, ...messages]);
     setActiveProvider(updatedProviders.find((p) => p.id === activeProvider.id));
+    if (bookingsOnDate.length > 0) {
+      markProviderOverviewPanelUnread(activeProvider.id, "providerNotifications", providerNotificationCountBeforeException);
+      affectedGuestIds.forEach((guestId) => markGuestOverviewPanelUnread(guestId, "guestNotifications", -1));
+      affectedGuestIds.forEach((guestId) => markGuestOverviewPanelUnread(guestId, "guestCancelledBookings", -1));
+    }
     setExceptionDate("");
 
     const providerDbId = await getSupabaseProviderId(activeProvider);
@@ -3860,6 +3910,7 @@ function renderProviderOverviewPanel(provider, panel) {
                 id: Date.now(),
                 text: `${booking.guestName} lemondta ezt az időpontot: ${booking.date} ${booking.time}`,
                 note: "Vendég által lemondva.",
+                type: "cancel",
               },
               ...(provider.notifications || []),
             ],
@@ -3918,6 +3969,7 @@ function renderProviderOverviewPanel(provider, panel) {
 
     refreshProviderViews(updatedProviders, booking.providerId);
     markProviderOverviewPanelUnread(booking.providerId, "providerNotifications", providerNotificationCountBeforeCancel);
+    markGuestOverviewPanelUnread(booking.guestId, "guestCancelledBookings", -1);
 
     const supabaseCancelResult = await syncBookingCancellationToSupabase(
       booking,
@@ -4112,6 +4164,7 @@ function renderProviderOverviewPanel(provider, panel) {
 
     if (guestForNotification) {
       markGuestOverviewPanelUnread(guestForNotification.id, "guestNotifications", guestNotificationCountBeforeCancel);
+      markGuestOverviewPanelUnread(guestForNotification.id, "guestCancelledBookings", -1);
     }
 
     const supabaseMessageResult = await saveMessageToSupabase(cancelMessage, {

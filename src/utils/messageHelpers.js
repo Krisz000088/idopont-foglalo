@@ -1,5 +1,12 @@
 export function getProviderNotificationKeyValue(normalizeId, providerId, notification) {
-  return `${normalizeId(providerId)}|${normalizeId(notification?.id)}|${String(notification?.text || "").trim()}`;
+  return [
+    normalizeId(providerId),
+    normalizeId(notification?.id),
+    String(notification?.type || "").trim(),
+    String(notification?.text || "").trim(),
+    String(notification?.note || "").trim(),
+    String(notification?.message || "").trim(),
+  ].join("|");
 }
 
 export function getVisibleProviderNotificationsFromList(provider, hiddenProviderNotificationKeys, normalizeId) {
@@ -11,7 +18,13 @@ export function getVisibleProviderNotificationsFromList(provider, hiddenProvider
 }
 
 export function getProviderMessageKeyValue(normalizeId, providerId, message) {
-  return `${normalizeId(providerId)}|${normalizeId(message?.id)}|${String(message?.text || "").trim()}`;
+  return [
+    normalizeId(providerId),
+    normalizeId(message?.id),
+    String(message?.type || "").trim(),
+    String(message?.createdAt || "").trim(),
+    String(message?.text || "").trim(),
+  ].join("|");
 }
 
 export function isRealGuestMessage(message) {
@@ -27,11 +40,24 @@ export function getVisibleProviderGuestMessagesFromList(messagesForProvider, hid
 }
 
 export function getGuestMessageKeyValue(normalizeId, guestId, message) {
-  return `${normalizeId(guestId)}|${normalizeId(message?.id)}|${String(message?.text || "").trim()}`;
+  return [
+    normalizeId(guestId),
+    normalizeId(message?.id),
+    String(message?.type || "").trim(),
+    String(message?.createdAt || "").trim(),
+    String(message?.text || "").trim(),
+  ].join("|");
 }
 
 export function getGuestNotificationKeyValue(normalizeId, guestId, notification) {
-  return `${normalizeId(guestId)}|${normalizeId(notification?.id)}|${String(notification?.text || "").trim()}|${String(notification?.message || "").trim()}`;
+  return [
+    normalizeId(guestId),
+    normalizeId(notification?.id),
+    String(notification?.type || "").trim(),
+    String(notification?.text || "").trim(),
+    String(notification?.message || "").trim(),
+    String(notification?.note || "").trim(),
+  ].join("|");
 }
 
 export function getVisibleGuestNotificationsFromList(guest, hiddenGuestNotificationKeys, normalizeId) {

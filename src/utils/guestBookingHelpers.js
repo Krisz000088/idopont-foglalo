@@ -27,7 +27,16 @@ export function getGuestActiveBookingsFromList(guestBookings, idsEqual, guest) {
 }
 
 export function getGuestCancelledBookingKeyValue(normalizeId, guestId, booking) {
-  return `${normalizeId(guestId)}|${normalizeId(booking?.id)}|${String(booking?.date || "").trim()}|${String(booking?.time || "").trim()}`;
+  return [
+    normalizeId(guestId),
+    normalizeId(booking?.id),
+    normalizeId(booking?.slotId),
+    String(booking?.date || "").trim(),
+    String(booking?.time || "").trim(),
+    booking?.cancelledByProvider ? "provider" : "",
+    booking?.cancelledByGuest ? "guest" : "",
+    String(booking?.providerCancelMessage || "").trim(),
+  ].join("|");
 }
 
 export function getGuestCancelledBookingsFromList(guestBookings, idsEqual, guest) {

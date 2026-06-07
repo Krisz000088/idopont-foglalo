@@ -96,8 +96,8 @@ function ProviderCalendarView({
                       color: "#8a0000",
                     }
                   : {
-                      backgroundColor: selectedDate === date ? "#75b82a" : "#e9f7df",
-                      border: selectedDate === date ? "2px solid #1b5e20" : "1px solid #75b82a",
+                      backgroundColor: selectedDate === date ? "#2e7d32" : "#b7f08a",
+                      border: selectedDate === date ? "2px solid #0b3d12" : "2px solid #2e7d32",
                       color: "#1b5e20",
                     };
 
